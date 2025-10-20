@@ -159,6 +159,42 @@ export const useAccountStore = defineStore('account', () => {
   }
   
   /**
+   * 删除账户
+   */
+  async function deleteAccount(accountId) {
+    try {
+      accounts.value = accounts.value.filter(acc => acc.id !== accountId)
+      
+      // 如果删除的是当前账户，切换到第一个账户
+      if (currentAccountId.value === accountId) {
+        currentAccountId.value = accounts.value.length > 0 
+          ? accounts.value[0].id 
+          : null
+      }
+      
+      await saveAccounts()
+    } catch (error) {
+      console.error('Failed to delete account:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 断开账户连接
+   */
+  async function disconnectAccount(accountId) {
+    try {
+      await updateAccount(accountId, {
+        connected: false,
+        verifyResult: null,
+      })
+    } catch (error) {
+      console.error('Failed to disconnect account:', error)
+      throw error
+    }
+  }
+
+  /**
    * 同步账户
    * 重新验证账户连接并更新状态
    */
