@@ -321,8 +321,7 @@ Maillionaire/
 ## 📧 联系我们
 
 - 问题反馈：[GitHub Issues](https://github.com/maillionaire/maillionaire/issues)
-- 邮箱：support@maillionaire.com
-- 官网：https://maillionaire.com
+- 邮箱：yi.cai1989@gmail.com
 
 ---
 
