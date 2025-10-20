@@ -14,16 +14,34 @@
           v-for="account in accounts"
           :key="account.id"
           class="account-item"
-          @click="handleLogin(account)"
         >
-          <a-avatar :size="48" :style="{ backgroundColor: getAvatarColor(account.email) }">
+          <a-avatar :size="48" :style="{ backgroundColor: getAvatarColor(account.email) }" @click="handleLogin(account)">
             {{ getInitial(account.email) }}
           </a-avatar>
-          <div class="account-info">
+          <div class="account-info" @click="handleLogin(account)">
             <div class="account-name">{{ account.name || account.email }}</div>
             <div class="account-email">{{ account.email }}</div>
           </div>
           <div class="account-status" :class="{ connected: account.connected }"></div>
+          <div class="account-actions">
+            <a-button type="text" size="small" @click="handleEditAccount(account)">
+              <template #icon>
+                <EditOutlined />
+              </template>
+            </a-button>
+            <a-popconfirm
+              title="确定要删除这个账户吗？"
+              ok-text="确定"
+              cancel-text="取消"
+              @confirm="handleDeleteAccount(account.id)"
+            >
+              <a-button type="text" size="small" danger>
+                <template #icon>
+                  <DeleteOutlined />
+                </template>
+              </a-button>
+            </a-popconfirm>
+          </div>
         </div>
       </div>
       
@@ -41,14 +59,14 @@
       </a-button>
       
       <div class="footer-text">
-        Version 1.0.0 | © 2025 Maillionaire
+        {{ APP_VERSION.versionString }} | {{ APP_VERSION.copyright }}
       </div>
     </div>
     
     <!-- 添加账户弹窗 -->
     <a-modal
       v-model:open="showAddAccount"
-      title="添加邮箱账户"
+      :title="editingAccount ? '编辑账户' : '添加邮箱账户'"
       :width="600"
       @ok="handleAddAccount"
     >
@@ -92,9 +110,10 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { MailOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { MailOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useAccountStore } from '@/stores/account'
 import { oauth2Service } from '@/services/oauth'
+import APP_VERSION from '@/config/version'
 
 const router = useRouter()
 const accountStore = useAccountStore()
@@ -104,6 +123,7 @@ const accounts = computed(() => accountStore.accounts)
 
 // 添加账户弹窗
 const showAddAccount = ref(false)
+const editingAccount = ref(null)  // 正在编辑的账户
 const formRef = ref(null)
 const formData = reactive({
   type: 'gmail',
@@ -210,6 +230,36 @@ async function handleAddAccount() {
     let account
     let skipVerify = false  // 是否跳过验证
     
+    // 如果是编辑模式
+    if (editingAccount.value) {
+      // 更新账户
+      const updates = {
+        name: formData.name || formData.email.split('@')[0],
+      }
+      
+      // 如果修改了密码，更新密码
+      if (!isOAuth2.value && formData.password) {
+        updates.password = formData.password
+        updates.connected = false  // 重置连接状态
+      }
+      
+      await accountStore.updateAccount(editingAccount.value.id, updates)
+      message.success('账户更新成功')
+      
+      // 关闭弹窗
+      showAddAccount.value = false
+      editingAccount.value = null
+      
+      // 重置表单
+      formRef.value.resetFields()
+      formData.type = 'gmail'
+      formData.email = ''
+      formData.password = ''
+      formData.name = ''
+      
+      return
+    }
+    
     if (isOAuth2.value) {
       // OAuth2 认证流程
       message.loading('正在进行 OAuth2 认证...', 0)
@@ -314,6 +364,31 @@ async function handleAddAccount() {
   }
 }
 
+/**
+ * 编辑账户
+ */
+function handleEditAccount(account) {
+  editingAccount.value = account
+  formData.type = account.type
+  formData.email = account.email
+  formData.name = account.name
+  formData.password = ''  // 不显示密码
+  showAddAccount.value = true
+}
+
+/**
+ * 删除账户
+ */
+async function handleDeleteAccount(accountId) {
+  try {
+    await accountStore.deleteAccount(accountId)
+    message.success('账户删除成功')
+  } catch (error) {
+    console.error('Delete account failed:', error)
+    message.error('删除账户失败：' + error.message)
+  }
+}
+
 // 初始化：加载账户列表
 onMounted(async () => {
   try {
@@ -389,12 +464,17 @@ onMounted(async () => {
   &:hover {
     border-color: var(--primary-color);
     background: #F0F7FF;
+    
+    .account-actions {
+      opacity: 1;
+    }
   }
 }
 
 .account-info {
   flex: 1;
   margin-left: 16px;
+  cursor: pointer;
 }
 
 .account-name {
@@ -414,10 +494,18 @@ onMounted(async () => {
   height: 8px;
   border-radius: 50%;
   background: #D9D9D9;
+  margin-right: 8px;
   
   &.connected {
     background: var(--success-color);
   }
+}
+
+.account-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.3s;
 }
 
 .add-account-btn {

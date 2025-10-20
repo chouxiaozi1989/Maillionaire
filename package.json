@@ -1,6 +1,6 @@
 {
   "name": "maillionaire",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "专业的跨平台邮件收发客户端",
   "main": "electron/main.js",
   "author": "Maillionaire Team",

@@ -153,6 +153,42 @@ class StorageService {
   async saveConfig(config) {
     await this.writeJSON('settings/config.json', config)
   }
+
+  /**
+   * 删除账户的所有数据
+   * 包括邮件、文件夹等
+   */
+  async deleteAccountData(accountId) {
+    try {
+      // 删除所有文件夹的邮件
+      const folders = ['inbox', 'sent', 'drafts', 'trash', 'starred']
+      
+      for (const folder of folders) {
+        const filename = `emails/${accountId}/${folder}.json`
+        try {
+          await this.deleteFile(filename)
+          console.log(`[Storage] Deleted ${filename}`)
+        } catch (error) {
+          // 忽略不存在的文件
+          if (error.code !== 'ENOENT') {
+            console.error(`[Storage] Failed to delete ${filename}:`, error)
+          }
+        }
+      }
+      
+      // 如果是 Electron 环境，删除整个账户文件夹
+      if (this.isElectron) {
+        // 注意：electronAPI 目前不支持删除文件夹，只能删除文件
+        // 如果需要，可以在主进程添加 deleteFolder API
+        console.log(`[Storage] Account ${accountId} data deletion completed`)
+      }
+      
+      return true
+    } catch (error) {
+      console.error('[Storage] Failed to delete account data:', error)
+      throw error
+    }
+  }
 }
 
 export const storageService = new StorageService()

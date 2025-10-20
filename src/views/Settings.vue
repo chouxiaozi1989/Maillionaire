@@ -241,9 +241,9 @@
             <div class="about-logo">
               <MailOutlined :style="{ fontSize: '64px', color: '#1890FF' }" />
             </div>
-            <h1 class="about-title">Maillionaire</h1>
-            <p class="about-subtitle">专业的邮件收发客户端</p>
-            <p class="about-version">版本 1.0.0</p>
+            <h1 class="about-title">{{ APP_VERSION.name }}</h1>
+            <p class="about-subtitle">{{ APP_VERSION.description }}</p>
+            <p class="about-version">{{ APP_VERSION.fullVersionString }}</p>
 
             <a-divider />
 
@@ -297,6 +297,7 @@ import { useTemplateStore } from '@/stores/template'
 import { useSignatureStore } from '@/stores/signature'
 import TemplateFormModal from '@/components/template/TemplateFormModal.vue'
 import SignatureFormModal from '@/components/signature/SignatureFormModal.vue'
+import APP_VERSION from '@/config/version'
 
 const accountStore = useAccountStore()
 const templateStore = useTemplateStore()

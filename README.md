@@ -4,8 +4,9 @@
   <img src="./design/ui-mockups/logo.png" alt="Maillionaire Logo" width="120" />
   <h1>Maillionaire</h1>
   <p>专业的跨平台邮件收发客户端</p>
+  <p><strong>版本：v1.1.0</strong> | 更新日期：2025-10-19</p>
   
-  [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/maillionaire/maillionaire)
+  [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/maillionaire/maillionaire)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
   [![Electron](https://img.shields.io/badge/Electron-26.2.1-blue.svg)](https://www.electronjs.org/)
   [![Vue](https://img.shields.io/badge/Vue-3.3.4-brightgreen.svg)](https://vuejs.org/)

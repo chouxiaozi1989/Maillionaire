@@ -268,7 +268,7 @@ async function handleSync() {
       return
     }
     
-    // 同步账户连接
+    // 1. 同步账户连接
     const loadingMsg = message.loading('正在同步账户...', 0)
     
     try {
@@ -276,22 +276,50 @@ async function handleSync() {
       loadingMsg()
       
       if (result.imap && result.smtp) {
-        message.success('账户同步成功')
+        message.success('账户连接验证成功')
         
-        // 同步文件夹
-        await mailStore.syncServerFolders()
+        // 2. 同步文件夹
+        const folderMsg = message.loading('正在同步文件夹...', 0)
+        try {
+          await mailStore.syncServerFolders()
+          folderMsg()
+          message.success('文件夹同步成功')
+        } catch (error) {
+          folderMsg()
+          console.error('Folder sync failed:', error)
+          message.warning('文件夹同步失败：' + error.message)
+        }
         
-        // TODO: 同步邮件
-        // await mailStore.syncMails()
+        // 3. 拉取最新邮件
+        const mailMsg = message.loading('正在拉取最新邮件...', 0)
+        try {
+          const newMails = await mailStore.fetchMailsFromServer('INBOX', {
+            limit: 50,
+            unreadOnly: false,
+          })
+          mailMsg()
+          
+          if (newMails && newMails.length > 0) {
+            message.success(`成功拉取 ${newMails.length} 封新邮件`)
+          } else {
+            message.info('没有新邮件')
+          }
+        } catch (error) {
+          mailMsg()
+          console.error('Mail fetch failed:', error)
+          message.warning('邮件拉取失败：' + error.message)
+        }
+        
       } else {
         const errorMsg = result.errors?.join('; ') || '未知错误'
-        message.error(`同步失败: ${errorMsg}`)
+        message.error(`账户连接失败: ${errorMsg}`)
       }
     } catch (error) {
       loadingMsg()
       throw error
     }
   } catch (error) {
+    console.error('Sync failed:', error)
     message.error('同步失败：' + error.message)
   } finally {
     syncing.value = false

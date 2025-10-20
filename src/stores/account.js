@@ -163,16 +163,36 @@ export const useAccountStore = defineStore('account', () => {
    */
   async function deleteAccount(accountId) {
     try {
+      const account = accounts.value.find(acc => acc.id === accountId)
+      if (!account) {
+        throw new Error('账户不存在')
+      }
+
+      // 1. 删除账户的所有本地数据（邮件、文件夹等）
+      console.log(`[Account] Deleting data for account ${account.email}...`)
+      await storageService.deleteAccountData(accountId)
+      
+      // 2. 从账户列表中移除
       accounts.value = accounts.value.filter(acc => acc.id !== accountId)
       
-      // 如果删除的是当前账户，切换到第一个账户
+      // 3. 如果删除的是当前账户，切换到第一个账户
       if (currentAccountId.value === accountId) {
         currentAccountId.value = accounts.value.length > 0 
           ? accounts.value[0].id 
           : null
+        
+        // 更新 localStorage
+        if (currentAccountId.value) {
+          localStorage.setItem('currentAccountId', currentAccountId.value)
+        } else {
+          localStorage.removeItem('currentAccountId')
+        }
       }
       
+      // 4. 保存更新后的账户列表
       await saveAccounts()
+      
+      console.log(`[Account] Account ${account.email} deleted successfully`)
     } catch (error) {
       console.error('Failed to delete account:', error)
       throw error

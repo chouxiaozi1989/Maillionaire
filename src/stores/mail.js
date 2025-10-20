@@ -88,6 +88,124 @@ export const useMailStore = defineStore('mail', () => {
       mails.value = []
     }
   }
+
+  /**
+   * 从服务器拉取邮件
+   * @param {string} folderName - 文件夹名称（默认 'INBOX'）
+   * @param {Object} options - 选项
+   * @param {number} options.limit - 限制数量（默认 50）
+   * @param {Date} options.since - 从某个日期开始
+   * @param {boolean} options.unreadOnly - 只拉取未读邮件
+   */
+  async function fetchMailsFromServer(folderName = 'INBOX', options = {}) {
+    try {
+      const account = accountStore.currentAccount
+      if (!account) {
+        throw new Error('请先选择账户')
+      }
+
+      if (!window.electronAPI) {
+        console.warn('[Mail] Not in Electron environment, skipping fetch')
+        return []
+      }
+
+      console.log(`[Mail] Fetching mails from ${folderName}...`)
+
+      // 1. 连接 IMAP
+      await window.electronAPI.connectImap({
+        email: account.email,
+        password: account.password || account.accessToken,
+        imapHost: account.imapHost,
+        imapPort: account.imapPort,
+      })
+
+      // 2. 打开文件夹
+      await window.electronAPI.openImapFolder(folderName)
+
+      // 3. 构建搜索条件
+      const criteria = []
+      
+      if (options.unreadOnly) {
+        criteria.push('UNSEEN')
+      }
+      
+      if (options.since) {
+        const sinceDate = new Date(options.since)
+        criteria.push(['SINCE', sinceDate])
+      }
+      
+      // 如果没有条件，搜索所有邮件
+      if (criteria.length === 0) {
+        criteria.push('ALL')
+      }
+
+      // 4. 搜索邮件
+      const uids = await window.electronAPI.searchImapMails(criteria)
+      console.log(`[Mail] Found ${uids.length} mails`)
+
+      if (uids.length === 0) {
+        await window.electronAPI.disconnectImap()
+        return []
+      }
+
+      // 5. 限制数量（取最新的）
+      const limit = options.limit || 50
+      const fetchUids = uids.slice(-limit)
+
+      // 6. 获取并解析邮件
+      const fetchedMails = await window.electronAPI.fetchAndParseImapMails(fetchUids)
+      console.log(`[Mail] Fetched ${fetchedMails.length} mails`)
+
+      // 7. 转换为应用数据格式
+      const newMails = fetchedMails.map(mail => ({
+        id: `${accountStore.currentAccountId}_${mail.uid}_${Date.now()}`,
+        uid: mail.uid,
+        accountId: accountStore.currentAccountId,
+        folder: currentFolder.value,
+        from: mail.parsed?.from || '',
+        to: mail.parsed?.to || '',
+        cc: mail.parsed?.cc || '',
+        subject: mail.parsed?.subject || '(无主题)',
+        date: mail.parsed?.date || new Date(),
+        preview: mail.parsed?.text?.substring(0, 200) || '',
+        body: mail.parsed?.html || mail.parsed?.textAsHtml || mail.parsed?.text || '',
+        read: mail.flags?.includes('\\Seen') || false,
+        flagged: mail.flags?.includes('\\Flagged') || false,
+        hasAttachment: (mail.parsed?.attachments?.length || 0) > 0,
+        attachments: mail.parsed?.attachments || [],
+        receivedAt: new Date().toISOString(),
+      }))
+
+      // 8. 断开连接
+      await window.electronAPI.disconnectImap()
+
+      // 9. 合并到本地邮件列表（去重）
+      newMails.forEach(newMail => {
+        const exists = mails.value.find(m => m.uid === newMail.uid)
+        if (!exists) {
+          mails.value.unshift(newMail)
+        }
+      })
+
+      // 10. 保存到本地
+      await saveMails()
+
+      return newMails
+    } catch (error) {
+      console.error('[Mail] Failed to fetch mails:', error)
+      
+      // 确保断开连接
+      if (window.electronAPI) {
+        try {
+          await window.electronAPI.disconnectImap()
+        } catch (e) {
+          // 忽略断开错误
+        }
+      }
+      
+      throw error
+    }
+  }
   
   /**
    * 添加邮件
@@ -235,23 +353,89 @@ export const useMailStore = defineStore('mail', () => {
   async function syncServerFolders() {
     try {
       isSyncing.value = true
+      const account = accountStore.currentAccount
       
-      // TODO: 实际从 IMAP 服务器获取文件夹
-      // const imapFolders = await imapService.syncFolders()
-      
-      // 模拟服务器文件夹
-      const serverFolders = [
-        { id: 'work', name: '工作邮件', icon: 'FolderOutlined', system: false },
-        { id: 'personal', name: '个人邮件', icon: 'FolderOutlined', system: false },
-      ]
-      
-      // 合并服务器文件夹到本地
-      serverFolders.forEach(serverFolder => {
-        const exists = folders.value.find(f => f.id === serverFolder.id)
-        if (!exists) {
-          folders.value.push(serverFolder)
+      if (!account) {
+        throw new Error('请先选择账户')
+      }
+
+      // 如果是 Electron 环境，从真实 IMAP 服务器获取文件夹
+      if (window.electronAPI) {
+        try {
+          // 先连接 IMAP
+          await window.electronAPI.connectImap({
+            email: account.email,
+            password: account.password || account.accessToken,
+            imapHost: account.imapHost,
+            imapPort: account.imapPort,
+          })
+
+          // 获取服务器文件夹列表
+          const serverFolders = await window.electronAPI.getServerFolders()
+          console.log('[Mail] Server folders:', serverFolders)
+
+          // 映射常见文件夹名称到系统文件夹
+          const folderMapping = {
+            'INBOX': 'inbox',
+            'Sent': 'sent',
+            'Sent Messages': 'sent',
+            'Sent Items': 'sent',
+            'Drafts': 'drafts',
+            'Trash': 'trash',
+            'Deleted': 'trash',
+            'Deleted Messages': 'trash',
+            'Junk': 'spam',
+            'Spam': 'spam',
+          }
+
+          // 处理服务器文件夹
+          serverFolders.forEach(serverFolder => {
+            const mappedId = folderMapping[serverFolder.name] || folderMapping[serverFolder.path]
+            
+            if (mappedId) {
+              // 更新系统文件夹的服务器路径
+              const folder = folders.value.find(f => f.id === mappedId)
+              if (folder) {
+                folder.serverPath = serverFolder.path
+                folder.delimiter = serverFolder.delimiter
+              }
+            } else {
+              // 自定义文件夹，添加到列表
+              const exists = folders.value.find(f => f.serverPath === serverFolder.path)
+              if (!exists) {
+                folders.value.push({
+                  id: `server_${serverFolder.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                  name: serverFolder.name,
+                  serverPath: serverFolder.path,
+                  delimiter: serverFolder.delimiter,
+                  icon: 'FolderOutlined',
+                  system: false,
+                })
+              }
+            }
+          })
+
+          // 断开连接
+          await window.electronAPI.disconnectImap()
+
+        } catch (error) {
+          console.error('[Mail] Failed to fetch server folders:', error)
+          throw error
         }
-      })
+      } else {
+        // 浏览器模式，使用模拟数据
+        const serverFolders = [
+          { id: 'work', name: '工作邮件', icon: 'FolderOutlined', system: false },
+          { id: 'personal', name: '个人邮件', icon: 'FolderOutlined', system: false },
+        ]
+        
+        serverFolders.forEach(serverFolder => {
+          const exists = folders.value.find(f => f.id === serverFolder.id)
+          if (!exists) {
+            folders.value.push(serverFolder)
+          }
+        })
+      }
       
       lastSyncTime.value = new Date().toISOString()
       await storageService.writeJSON('folders.json', {
@@ -367,6 +551,7 @@ export const useMailStore = defineStore('mail', () => {
     selectedMailIds,
     filter,
     loadMails,
+    fetchMailsFromServer,
     addMail,
     updateMail,
     deleteMail,

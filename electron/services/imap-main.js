@@ -300,6 +300,158 @@ class ImapMainService {
       });
     });
   }
+
+  /**
+   * 获取邮件内容
+   * @param {Array} uids - 邮件UID数组
+   * @param {Object} options - 选项 { bodies: 'HEADER.FIELDS (FROM TO SUBJECT DATE)', struct: true }
+   * @returns {Promise<Array>} 邮件列表
+   */
+  async fetchMails(uids, options = {}) {
+    return new Promise((resolve, reject) => {
+      if (!this.connection) {
+        reject(new Error('IMAP not connected'));
+        return;
+      }
+
+      if (!uids || uids.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      const mails = [];
+      const fetch = this.connection.fetch(uids, {
+        bodies: options.bodies || '',
+        struct: options.struct !== false,
+      });
+
+      fetch.on('message', (msg, seqno) => {
+        const mail = {
+          uid: null,
+          flags: [],
+          date: null,
+          headers: {},
+          body: '',
+          struct: null,
+        };
+
+        msg.on('body', (stream, info) => {
+          let buffer = '';
+          stream.on('data', (chunk) => {
+            buffer += chunk.toString('utf8');
+          });
+          stream.once('end', () => {
+            if (info.which === '') {
+              // 完整邮件体
+              mail.body = buffer;
+            } else {
+              // 头部信息
+              const lines = buffer.split('\r\n');
+              lines.forEach(line => {
+                const match = line.match(/^([^:]+):\s*(.+)$/);
+                if (match) {
+                  const key = match[1].toLowerCase();
+                  mail.headers[key] = match[2];
+                }
+              });
+            }
+          });
+        });
+
+        msg.once('attributes', (attrs) => {
+          mail.uid = attrs.uid;
+          mail.flags = attrs.flags;
+          mail.date = attrs.date;
+          mail.struct = attrs.struct;
+        });
+
+        msg.once('end', () => {
+          mails.push(mail);
+        });
+      });
+
+      fetch.once('error', (err) => {
+        reject(err);
+      });
+
+      fetch.once('end', () => {
+        resolve(mails);
+      });
+    });
+  }
+
+  /**
+   * 使用 mailparser 解析邮件内容
+   * @param {Array} uids - 邮件UID数组
+   * @returns {Promise<Array>} 解析后的邮件列表
+   */
+  async fetchAndParseMails(uids) {
+    return new Promise((resolve, reject) => {
+      if (!this.connection) {
+        reject(new Error('IMAP not connected'));
+        return;
+      }
+
+      if (!uids || uids.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      const mails = [];
+      const fetch = this.connection.fetch(uids, {
+        bodies: '',
+        struct: true,
+      });
+
+      fetch.on('message', (msg, seqno) => {
+        const mailData = {
+          uid: null,
+          flags: [],
+          parsed: null,
+        };
+
+        msg.on('body', async (stream, info) => {
+          try {
+            const parsed = await simpleParser(stream);
+            mailData.parsed = {
+              from: parsed.from?.text || '',
+              to: parsed.to?.text || '',
+              cc: parsed.cc?.text || '',
+              subject: parsed.subject || '',
+              date: parsed.date,
+              text: parsed.text || '',
+              html: parsed.html || '',
+              textAsHtml: parsed.textAsHtml || '',
+              attachments: parsed.attachments?.map(att => ({
+                filename: att.filename,
+                contentType: att.contentType,
+                size: att.size,
+              })) || [],
+            };
+          } catch (error) {
+            console.error('Failed to parse mail:', error);
+          }
+        });
+
+        msg.once('attributes', (attrs) => {
+          mailData.uid = attrs.uid;
+          mailData.flags = attrs.flags;
+        });
+
+        msg.once('end', () => {
+          mails.push(mailData);
+        });
+      });
+
+      fetch.once('error', (err) => {
+        reject(err);
+      });
+
+      fetch.once('end', () => {
+        resolve(mails);
+      });
+    });
+  }
 }
 
 module.exports = new ImapMainService();

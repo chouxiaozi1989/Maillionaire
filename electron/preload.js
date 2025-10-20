@@ -43,4 +43,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteImapFolder: (folderName) => ipcRenderer.invoke('delete-imap-folder', folderName),
   renameImapFolder: (oldName, newName) => ipcRenderer.invoke('rename-imap-folder', oldName, newName),
   copyImapMail: (uid, targetFolder) => ipcRenderer.invoke('copy-imap-mail', uid, targetFolder),
+  fetchImapMails: (uids, options) => ipcRenderer.invoke('fetch-imap-mails', uids, options),
+  fetchAndParseImapMails: (uids) => ipcRenderer.invoke('fetch-and-parse-imap-mails', uids),
 });

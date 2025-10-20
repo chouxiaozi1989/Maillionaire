@@ -206,3 +206,11 @@ ipcMain.handle('rename-imap-folder', async (event, oldName, newName) => {
 ipcMain.handle('copy-imap-mail', async (event, uid, targetFolder) => {
   return await imapService.copyMail(uid, targetFolder);
 });
+
+ipcMain.handle('fetch-imap-mails', async (event, uids, options) => {
+  return await imapService.fetchMails(uids, options);
+});
+
+ipcMain.handle('fetch-and-parse-imap-mails', async (event, uids) => {
+  return await imapService.fetchAndParseMails(uids);
+});
