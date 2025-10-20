@@ -1,0 +1,73 @@
+{
+  "name": "maillionaire",
+  "version": "1.0.0",
+  "description": "专业的跨平台邮件收发客户端",
+  "main": "electron/main.js",
+  "author": "Maillionaire Team",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:start": "electron .",
+    "electron:dev": "concurrently -k \"npm run dev\" \"node scripts/start-electron.js\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "@vueup/vue-quill": "^1.2.0",
+    "ant-design-vue": "^4.0.3",
+    "axios": "^1.5.0",
+    "crypto-js": "^4.1.1",
+    "dayjs": "^1.11.10",
+    "dompurify": "^3.3.0",
+    "imap": "^0.8.19",
+    "mailparser": "^3.6.5",
+    "nodemailer": "^6.9.5",
+    "pinia": "^2.1.6",
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "concurrently": "^8.2.1",
+    "electron": "^26.6.10",
+    "electron-builder": "^24.6.4",
+    "sass": "^1.66.1",
+    "vite": "^4.4.9",
+    "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "com.maillionaire.app",
+    "productName": "Maillionaire",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png"
+    }
+  }
+}

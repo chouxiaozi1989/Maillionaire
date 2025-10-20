@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maillionaire - 登录页面设计</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 480px;
+            width: 100%;
+        }
+        
+        .logo-section {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #1890FF 0%, #096DD9 100%);
+            border-radius: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+        }
+        
+        .logo svg {
+            width: 48px;
+            height: 48px;
+            fill: white;
+        }
+        
+        .app-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #262626;
+            margin-bottom: 8px;
+        }
+        
+        .app-subtitle {
+            font-size: 14px;
+            color: #8C8C8C;
+        }
+        
+        .account-list {
+            margin-bottom: 24px;
+        }
+        
+        .account-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            border: 2px solid #F0F0F0;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .account-item:hover {
+            border-color: #1890FF;
+            background: #F0F7FF;
+        }
+        
+        .account-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #40A9FF 0%, #1890FF 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: 600;
+            margin-right: 16px;
+        }
+        
+        .account-info {
+            flex: 1;
+        }
+        
+        .account-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: #262626;
+            margin-bottom: 4px;
+        }
+        
+        .account-email {
+            font-size: 14px;
+            color: #8C8C8C;
+        }
+        
+        .account-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #52C41A;
+        }
+        
+        .add-account-btn {
+            width: 100%;
+            height: 48px;
+            border: 2px dashed #D9D9D9;
+            border-radius: 8px;
+            background: white;
+            color: #1890FF;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .add-account-btn:hover {
+            border-color: #1890FF;
+            background: #F0F7FF;
+        }
+        
+        .footer-text {
+            text-align: center;
+            margin-top: 32px;
+            font-size: 12px;
+            color: #BFBFBF;
+        }
+        
+        .divider {
+            height: 1px;
+            background: #F0F0F0;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo-section">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                </svg>
+            </div>
+            <h1 class="app-title">Maillionaire</h1>
+            <p class="app-subtitle">专业的邮件收发客户端</p>
+        </div>
+        
+        <div class="account-list">
+            <div class="account-item">
+                <div class="account-avatar">J</div>
+                <div class="account-info">
+                    <div class="account-name">John Doe</div>
+                    <div class="account-email">john.doe@gmail.com</div>
+                </div>
+                <div class="account-status"></div>
+            </div>
+            
+            <div class="account-item">
+                <div class="account-avatar" style="background: linear-gradient(135deg, #FA8C16 0%, #FA541C 100%);">M</div>
+                <div class="account-info">
+                    <div class="account-name">Mary Smith</div>
+                    <div class="account-email">mary.smith@outlook.com</div>
+                </div>
+                <div class="account-status"></div>
+            </div>
+        </div>
+        
+        <button class="add-account-btn">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 4V16M4 10H16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            添加邮箱账户
+        </button>
+        
+        <div class="footer-text">
+            Version 1.0.0 | © 2025 Maillionaire
+        </div>
+    </div>
+</body>
+</html>

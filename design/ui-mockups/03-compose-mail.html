@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maillionaire - 撰写邮件设计</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: rgba(0, 0, 0, 0.45);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 40px;
+        }
+        
+        .compose-modal {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 900px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .compose-header {
+            height: 60px;
+            padding: 0 24px;
+            border-bottom: 1px solid #F0F0F0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .compose-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #262626;
+        }
+        
+        .compose-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+        
+        .compose-close:hover {
+            background: #F5F5F5;
+        }
+        
+        .compose-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+        
+        .compose-field {
+            margin-bottom: 16px;
+        }
+        
+        .field-row {
+            display: flex;
+            align-items: center;
+            min-height: 40px;
+            border-bottom: 1px solid #F0F0F0;
+            padding: 8px 0;
+        }
+        
+        .field-label {
+            width: 80px;
+            font-size: 14px;
+            color: #595959;
+            font-weight: 500;
+        }
+        
+        .field-input {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .field-input input {
+            flex: 1;
+            min-width: 200px;
+            border: none;
+            outline: none;
+            font-size: 14px;
+            color: #262626;
+        }
+        
+        .recipient-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: #F0F7FF;
+            border: 1px solid #BAE7FF;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #1890FF;
+        }
+        
+        .recipient-tag .remove {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .cc-bcc-toggle {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .cc-bcc-toggle span {
+            font-size: 14px;
+            color: #1890FF;
+            cursor: pointer;
+        }
+        
+        .cc-bcc-toggle span:hover {
+            text-decoration: underline;
+        }
+        
+        .editor-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 12px;
+            background: #FAFAFA;
+            border: 1px solid #F0F0F0;
+            border-radius: 8px 8px 0 0;
+            margin-top: 16px;
+        }
+        
+        .toolbar-group {
+            display: flex;
+            gap: 4px;
+            padding-right: 12px;
+            border-right: 1px solid #E0E0E0;
+        }
+        
+        .toolbar-group:last-child {
+            border-right: none;
+        }
+        
+        .toolbar-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .toolbar-btn:hover {
+            background: #E6F7FF;
+        }
+        
+        .toolbar-btn.active {
+            background: #1890FF;
+            color: white;
+        }
+        
+        .editor-content {
+            min-height: 300px;
+            padding: 16px;
+            border: 1px solid #F0F0F0;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #262626;
+            outline: none;
+        }
+        
+        .editor-content:focus {
+            border-color: #1890FF;
+        }
+        
+        .attachment-area {
+            margin-top: 16px;
+            padding: 16px;
+            background: #FAFAFA;
+            border: 1px dashed #D9D9D9;
+            border-radius: 8px;
+        }
+        
+        .attachment-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .attachment-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #595959;
+        }
+        
+        .add-attachment-btn {
+            padding: 6px 12px;
+            border: 1px solid #D9D9D9;
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s;
+        }
+        
+        .add-attachment-btn:hover {
+            border-color: #1890FF;
+            color: #1890FF;
+        }
+        
+        .attachment-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .attachment-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: white;
+            border: 1px solid #E0E0E0;
+            border-radius: 6px;
+        }
+        
+        .attachment-icon {
+            width: 36px;
+            height: 36px;
+            background: #F0F7FF;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .attachment-info {
+            flex: 1;
+        }
+        
+        .attachment-name {
+            font-size: 14px;
+            color: #262626;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .attachment-size {
+            font-size: 12px;
+            color: #8C8C8C;
+        }
+        
+        .attachment-remove {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+        
+        .attachment-remove:hover {
+            background: #FFF1F0;
+            color: #FF4D4F;
+        }
+        
+        .compose-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #F0F0F0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .footer-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .footer-btn {
+            height: 40px;
+            padding: 0 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .footer-btn.primary {
+            background: #1890FF;
+            border: none;
+            color: white;
+        }
+        
+        .footer-btn.primary:hover {
+            background: #40A9FF;
+        }
+        
+        .footer-btn.secondary {
+            background: white;
+            border: 1px solid #D9D9D9;
+            color: #595959;
+        }
+        
+        .footer-btn.secondary:hover {
+            border-color: #1890FF;
+            color: #1890FF;
+        }
+        
+        .footer-options {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .option-btn {
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            font-size: 14px;
+            color: #1890FF;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+        
+        .option-btn:hover {
+            background: #F0F7FF;
+        }
+    </style>
+</head>
+<body>
+    <div class="compose-modal">
+        <div class="compose-header">
+            <h2 class="compose-title">撰写邮件</h2>
+            <button class="compose-close">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 5L15 15M5 15L15 5" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+        
+        <div class="compose-body">
+            <div class="cc-bcc-toggle">
+                <span>显示抄送</span>
+                <span>显示密送</span>
+            </div>
+            
+            <div class="compose-field">
+                <div class="field-row">
+                    <label class="field-label">收件人:</label>
+                    <div class="field-input">
+                        <div class="recipient-tag">
+                            alice@example.com
+                            <span class="remove">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 3L11 11M3 11L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="recipient-tag">
+                            bob.smith@company.com
+                            <span class="remove">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 3L11 11M3 11L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                </svg>
+                            </span>
+                        </div>
+                        <input type="email" placeholder="添加收件人...">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="compose-field">
+                <div class="field-row">
+                    <label class="field-label">主题:</label>
+                    <div class="field-input">
+                        <input type="text" placeholder="邮件主题" value="项目进度汇报 - Q4 2025">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="editor-toolbar">
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" title="撤销">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5.5 3.5L2 7L5.5 10.5M2 7H11C12.7 7 14 8.3 14 10C14 11.7 12.7 13 11 13H9"/>
+                        </svg>
+                    </button>
+                    <button class="toolbar-btn" title="重做">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M10.5 3.5L14 7L10.5 10.5M14 7H5C3.3 7 2 8.3 2 10C2 11.7 3.3 13 5 13H7"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" title="加粗">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4 2H9C10.7 2 12 3.3 12 5C12 6 11.5 6.9 10.7 7.4C11.7 7.9 12.5 8.9 12.5 10C12.5 11.9 10.9 13.5 9 13.5H4V2ZM6.5 6.5H8.5C9.3 6.5 10 5.8 10 5C10 4.2 9.3 3.5 8.5 3.5H6.5V6.5ZM6.5 12H9C9.8 12 10.5 11.3 10.5 10.5C10.5 9.7 9.8 9 9 9H6.5V12Z"/>
+                        </svg>
+                    </button>
+                    <button class="toolbar-btn" title="斜体">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 2H13V4H10L8 12H11V14H5V12H8L10 4H7V2Z"/>
+                        </svg>
+                    </button>
+                    <button class="toolbar-btn" title="下划线">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4 2V8C4 10.2 5.8 12 8 12C10.2 12 12 10.2 12 8V2H10V8C10 9.1 9.1 10 8 10C6.9 10 6 9.1 6 8V2H4ZM3 14H13V15H3V14Z"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" title="字体颜色">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 1L12 11H10L9 8H7L6 11H4L8 1ZM8 4L7.2 6.5H8.8L8 4Z"/>
+                            <rect y="13" width="16" height="3" fill="#1890FF"/>
+                        </svg>
+                    </button>
+                    <button class="toolbar-btn" title="背景色">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2 10L8 3L14 10H2Z"/>
+                            <rect y="11" width="16" height="4" fill="#FADB14"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" title="项目符号">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="2" cy="4" r="1.5"/>
+                            <circle cx="2" cy="8" r="1.5"/>
+                            <circle cx="2" cy="12" r="1.5"/>
+                            <rect x="5" y="3" width="10" height="2"/>
+                            <rect x="5" y="7" width="10" height="2"/>
+                            <rect x="5" y="11" width="10" height="2"/>
+                        </svg>
+                    </button>
+                    <button class="toolbar-btn" title="编号列表">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <text x="0" y="5" font-size="6">1.</text>
+                            <text x="0" y="9" font-size="6">2.</text>
+                            <text x="0" y="13" font-size="6">3.</text>
+                            <rect x="5" y="3" width="10" height="2"/>
+                            <rect x="5" y="7" width="10" height="2"/>
+                            <rect x="5" y="11" width="10" height="2"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" title="插入链接">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 9L9 8C9.5 7.5 10.5 7.5 11 8C11.5 8.5 11.5 9.5 11 10L9 12C8.5 12.5 7.5 12.5 7 12C6.5 11.5 6.5 10.5 7 10M7 7L5 5C4.5 4.5 3.5 4.5 3 5C2.5 5.5 2.5 6.5 3 7L5 9"/>
+                        </svg>
+                    </button>
+                    <button class="toolbar-btn" title="插入图片">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2 2H14V14H2V2ZM4 11L6 9L8 11L11 8L13 10V4H4V11Z"/>
+                            <circle cx="6" cy="6" r="1.5"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="editor-content" contenteditable="true">
+                <p>各位同事，大家好！</p>
+                <br>
+                <p>现将Q4季度的项目进度向大家汇报如下：</p>
+                <br>
+                <p><strong>一、已完成工作：</strong></p>
+                <ul style="margin-left: 20px; line-height: 2;">
+                    <li>完成了用户认证模块的开发和测试</li>
+                    <li>完成了邮件收发核心功能</li>
+                    <li>完成了UI界面的优化</li>
+                </ul>
+                <br>
+                <p><strong>二、进行中的工作：</strong></p>
+                <ul style="margin-left: 20px; line-height: 2;">
+                    <li>通讯录功能开发（预计下周完成）</li>
+                    <li>性能优化和bug修复</li>
+                </ul>
+                <br>
+                <p>请查看附件中的详细报告。</p>
+                <br>
+                <p>此致</p>
+                <p>敬礼！</p>
+            </div>
+            
+            <div class="attachment-area">
+                <div class="attachment-header">
+                    <span class="attachment-title">附件 (2)</span>
+                    <button class="add-attachment-btn">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 2V12M2 7H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        添加附件
+                    </button>
+                </div>
+                
+                <div class="attachment-list">
+                    <div class="attachment-item">
+                        <div class="attachment-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="#1890FF" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 2H12L16 6V16C16 17.1 15.1 18 14 18H4C2.9 18 2 17.1 2 16V4C2 2.9 2.9 2 4 2Z"/>
+                            </svg>
+                        </div>
+                        <div class="attachment-info">
+                            <div class="attachment-name">项目进度报告_Q4_2025.pdf</div>
+                            <div class="attachment-size">1.2 MB</div>
+                        </div>
+                        <button class="attachment-remove">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 4L12 12M4 12L12 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="attachment-item">
+                        <div class="attachment-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="#52C41A" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 2H12L16 6V16C16 17.1 15.1 18 14 18H4C2.9 18 2 17.1 2 16V4C2 2.9 2.9 2 4 2Z"/>
+                            </svg>
+                        </div>
+                        <div class="attachment-info">
+                            <div class="attachment-name">数据统计表.xlsx</div>
+                            <div class="attachment-size">456 KB</div>
+                        </div>
+                        <button class="attachment-remove">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 4L12 12M4 12L12 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="compose-footer">
+            <div class="footer-actions">
+                <button class="footer-btn primary">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2 2L14 8L2 14V9L10 8L2 7V2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    </svg>
+                    发送
+                </button>
+                <button class="footer-btn secondary">保存草稿</button>
+                <button class="footer-btn secondary">取消</button>
+            </div>
+            
+            <div class="footer-options">
+                <button class="option-btn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2 2H14V10H2V2ZM4 4V8H12V4H4Z"/>
+                    </svg>
+                    使用模板
+                </button>
+                <button class="option-btn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 2H13V12H3V2ZM5 10H11V11H5V10ZM5 8H11V9H5V8Z"/>
+                    </svg>
+                    添加签名
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
