@@ -24,10 +24,13 @@
     "crypto-js": "^4.1.1",
     "dayjs": "^1.11.10",
     "dompurify": "^3.3.0",
+    "https-proxy-agent": "^7.0.6",
     "imap": "^0.8.19",
     "mailparser": "^3.6.5",
     "nodemailer": "^6.9.5",
     "pinia": "^2.1.6",
+    "socks": "^2.8.7",
+    "socks-proxy-agent": "^8.0.5",
     "vue": "^3.3.4",
     "vue-router": "^4.2.4"
   },

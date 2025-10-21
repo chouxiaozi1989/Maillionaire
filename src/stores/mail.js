@@ -4,6 +4,57 @@ import { storageService } from '@/services/storage'
 import { useAccountStore } from './account'
 
 /**
+ * 检查并刷新 OAuth2 令牌（如果需要）
+ * @param {Object} account - 账户对象
+ * @param {Object} accountStore - 账户 store
+ * @returns {Promise<string>} 有效的访问令牌
+ */
+async function ensureValidToken(account, accountStore) {
+  // 如果不是 OAuth2 账户，直接返回 accessToken
+  if (!account.oauth2 || !account.accessToken) {
+    return account.accessToken || account.password
+  }
+  
+  // 检查令牌是否过期（提刕5分钟刷新）
+  const expiresAt = account.expiresAt || 0
+  const now = Date.now()
+  const bufferTime = 5 * 60 * 1000 // 5分钟缓冲时间
+  
+  if (expiresAt > now + bufferTime) {
+    // 令牌还有效
+    console.log('[Mail] Access token is valid')
+    return account.accessToken
+  }
+  
+  // 令牌已过期或即将过期，需要刷新
+  console.log('[Mail] Access token expired or expiring soon, refreshing...')
+  
+  if (!account.refreshToken) {
+    throw new Error('访问令牌已过期且没有刷新令牌，请重新登录')
+  }
+  
+  try {
+    const { oauth2Service } = await import('@/services/oauth')
+    const tokenResult = await oauth2Service.refreshToken(
+      account.provider || 'gmail',
+      account.refreshToken
+    )
+    
+    // 更新账户的令牌信息
+    await accountStore.updateAccount(account.id, {
+      accessToken: tokenResult.accessToken,
+      expiresAt: tokenResult.expiresAt,
+    })
+    
+    console.log('[Mail] Token refreshed successfully, new expiration:', new Date(tokenResult.expiresAt))
+    return tokenResult.accessToken
+  } catch (error) {
+    console.error('[Mail] Failed to refresh token:', error)
+    throw new Error(`访问令牌刷新失败: ${error.message}，请重新登录`)
+  }
+}
+
+/**
  * 邮件管理状态
  */
 export const useMailStore = defineStore('mail', () => {
@@ -111,10 +162,13 @@ export const useMailStore = defineStore('mail', () => {
 
       console.log(`[Mail] Fetching mails from ${folderName}...`)
 
+      // 获取有效的访问令牌（如果是 OAuth2 账户）
+      const password = await ensureValidToken(account, accountStore)
+
       // 1. 连接 IMAP
       await window.electronAPI.connectImap({
         email: account.email,
-        password: account.password || account.accessToken,
+        password: password,
         imapHost: account.imapHost,
         imapPort: account.imapPort,
       })
@@ -348,7 +402,7 @@ export const useMailStore = defineStore('mail', () => {
 
   /**
    * 同步服务器文件夹
-   * 从 IMAP 服务器获取文件夹列表并与本地合并
+   * 从 IMAP 服务器或 Gmail API 获取文件夹列表并与本地合并
    */
   async function syncServerFolders() {
     try {
@@ -359,64 +413,146 @@ export const useMailStore = defineStore('mail', () => {
         throw new Error('请先选择账户')
       }
 
-      // 如果是 Electron 环境，从真实 IMAP 服务器获取文件夹
+      // 如果是 Electron 环境，从真实服务器获取文件夹
       if (window.electronAPI) {
         try {
-          // 先连接 IMAP
-          await window.electronAPI.connectImap({
-            email: account.email,
-            password: account.password || account.accessToken,
-            imapHost: account.imapHost,
-            imapPort: account.imapPort,
-          })
-
-          // 获取服务器文件夹列表
-          const serverFolders = await window.electronAPI.getServerFolders()
-          console.log('[Mail] Server folders:', serverFolders)
-
-          // 映射常见文件夹名称到系统文件夹
-          const folderMapping = {
-            'INBOX': 'inbox',
-            'Sent': 'sent',
-            'Sent Messages': 'sent',
-            'Sent Items': 'sent',
-            'Drafts': 'drafts',
-            'Trash': 'trash',
-            'Deleted': 'trash',
-            'Deleted Messages': 'trash',
-            'Junk': 'spam',
-            'Spam': 'spam',
-          }
-
-          // 处理服务器文件夹
-          serverFolders.forEach(serverFolder => {
-            const mappedId = folderMapping[serverFolder.name] || folderMapping[serverFolder.path]
+          // 检测是否为 Gmail 账户（通过 provider 或 imapHost 判断）
+          const isGmail = account.provider === 'gmail' || 
+                          account.imapHost?.includes('gmail.com') ||
+                          account.email?.endsWith('@gmail.com')
+          
+          if (isGmail && account.accessToken) {
+            console.log('[Mail] Syncing Gmail folders via API...')
             
-            if (mappedId) {
-              // 更新系统文件夹的服务器路径
-              const folder = folders.value.find(f => f.id === mappedId)
-              if (folder) {
-                folder.serverPath = serverFolder.path
-                folder.delimiter = serverFolder.delimiter
-              }
-            } else {
-              // 自定义文件夹，添加到列表
-              const exists = folders.value.find(f => f.serverPath === serverFolder.path)
-              if (!exists) {
-                folders.value.push({
-                  id: `server_${serverFolder.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
-                  name: serverFolder.name,
-                  serverPath: serverFolder.path,
-                  delimiter: serverFolder.delimiter,
-                  icon: 'FolderOutlined',
-                  system: false,
-                })
-              }
+            // 获取有效的访问令牌（如果需要会自动刷新）
+            const accessToken = await ensureValidToken(account, accountStore)
+            
+            // 使用 Gmail API 获取标签（文件夹）
+            const { gmailApiService } = await import('@/services/gmail-api')
+            const labels = await gmailApiService.getLabels(accessToken)
+            
+            console.log('[Mail] Gmail labels:', labels)
+            
+            // Gmail 系统标签映射
+            const gmailSystemLabels = {
+              'INBOX': 'inbox',
+              'SENT': 'sent',
+              'DRAFT': 'drafts',
+              'TRASH': 'trash',
+              'SPAM': 'spam',
+              'STARRED': 'starred',
             }
-          })
+            
+            // 处理标签
+            labels.forEach(label => {
+              const mappedId = gmailSystemLabels[label.id]
+              
+              if (mappedId) {
+                // 系统标签，更新已有的系统文件夹
+                const folder = folders.value.find(f => f.id === mappedId)
+                if (folder) {
+                  folder.gmailLabelId = label.id
+                  folder.gmailLabelName = label.name
+                  folder.messageTotal = label.messageTotal
+                  folder.messageUnread = label.messageUnread
+                }
+              } else if (label.type === 'system') {
+                // 其他系统标签，按名称处理
+                const exists = folders.value.find(f => f.gmailLabelId === label.id)
+                if (!exists) {
+                  folders.value.push({
+                    id: `gmail_${label.id}`,
+                    name: label.name,
+                    gmailLabelId: label.id,
+                    gmailLabelName: label.name,
+                    messageTotal: label.messageTotal,
+                    messageUnread: label.messageUnread,
+                    icon: 'FolderOutlined',
+                    system: true,
+                  })
+                }
+              } else {
+                // 用户自定义标签
+                const exists = folders.value.find(f => f.gmailLabelId === label.id)
+                if (!exists) {
+                  folders.value.push({
+                    id: `gmail_${label.id}`,
+                    name: label.name,
+                    gmailLabelId: label.id,
+                    gmailLabelName: label.name,
+                    messageTotal: label.messageTotal,
+                    messageUnread: label.messageUnread,
+                    icon: 'FolderOutlined',
+                    system: false,
+                  })
+                } else {
+                  // 更新计数
+                  exists.messageTotal = label.messageTotal
+                  exists.messageUnread = label.messageUnread
+                }
+              }
+            })
+            
+          } else {
+            // 非 Gmail 账户，使用 IMAP
+            console.log('[Mail] Syncing folders via IMAP...')
+            
+            // 先连接 IMAP
+            await window.electronAPI.connectImap({
+              email: account.email,
+              password: account.password || account.accessToken,
+              imapHost: account.imapHost,
+              imapPort: account.imapPort,
+            })
 
-          // 断开连接
-          await window.electronAPI.disconnectImap()
+            // 获取服务器文件夹列表
+            const serverFolders = await window.electronAPI.getServerFolders()
+            console.log('[Mail] Server folders:', serverFolders)
+
+            // 映射常见文件夹名称到系统文件夹
+            const folderMapping = {
+              'INBOX': 'inbox',
+              'Sent': 'sent',
+              'Sent Messages': 'sent',
+              'Sent Items': 'sent',
+              'Drafts': 'drafts',
+              'Trash': 'trash',
+              'Deleted': 'trash',
+              'Deleted Messages': 'trash',
+              'Junk': 'spam',
+              'Spam': 'spam',
+            }
+
+            // 处理服务器文件夹
+            serverFolders.forEach(serverFolder => {
+              const mappedId = folderMapping[serverFolder.name] || folderMapping[serverFolder.path]
+              
+              if (mappedId) {
+                // 更新系统文件夹的服务器路径
+                const folder = folders.value.find(f => f.id === mappedId)
+                if (folder) {
+                  folder.serverPath = serverFolder.path
+                  folder.delimiter = serverFolder.delimiter
+                }
+              } else {
+                // 自定义文件夹，添加到列表
+                const exists = folders.value.find(f => f.serverPath === serverFolder.path)
+                if (!exists) {
+                  folders.value.push({
+                    id: `server_${serverFolder.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                    name: serverFolder.name,
+                    serverPath: serverFolder.path,
+                    delimiter: serverFolder.delimiter,
+                    icon: 'FolderOutlined',
+                    system: false,
+                  })
+                }
+              }
+            })
+
+            // 断开连接
+            await window.electronAPI.disconnectImap()
+          }
 
         } catch (error) {
           console.error('[Mail] Failed to fetch server folders:', error)

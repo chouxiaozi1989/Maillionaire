@@ -45,4 +45,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   copyImapMail: (uid, targetFolder) => ipcRenderer.invoke('copy-imap-mail', uid, targetFolder),
   fetchImapMails: (uids, options) => ipcRenderer.invoke('fetch-imap-mails', uids, options),
   fetchAndParseImapMails: (uids) => ipcRenderer.invoke('fetch-and-parse-imap-mails', uids),
+  
+  // 代理配置操作
+  setProxyConfig: (config) => ipcRenderer.invoke('set-proxy-config', config),
+  getProxyConfig: () => ipcRenderer.invoke('get-proxy-config'),
+  testProxy: (config) => ipcRenderer.invoke('test-proxy', config),
+  
+  // OAuth2 操作
+  oauth2ExchangeToken: (provider, code, config) => ipcRenderer.invoke('oauth2-exchange-token', { provider, code, config }),
+  oauth2RefreshToken: (provider, refreshToken, config) => ipcRenderer.invoke('oauth2-refresh-token', { provider, refreshToken, config }),
+  
+  // Gmail API 操作
+  gmailApiRequest: (url, options) => ipcRenderer.invoke('gmail-api-request', url, options),
 });

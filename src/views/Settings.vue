@@ -15,6 +15,13 @@
             通用设置
           </a-menu-item>
 
+          <a-menu-item key="proxy">
+            <template #icon>
+              <GlobalOutlined />
+            </template>
+            代理设置
+          </a-menu-item>
+
           <a-menu-item key="accounts">
             <template #icon>
               <UserOutlined />
@@ -88,6 +95,134 @@
           </a-form>
         </div>
 
+        <!-- 代理设置 -->
+        <div v-if="selectedMenu[0] === 'proxy'" class="settings-panel">
+          <h2 class="panel-title">代理设置</h2>
+
+          <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
+            <a-form-item label="启用代理">
+              <a-switch v-model:checked="proxySettings.enabled" />
+              <span style="margin-left: 8px; color: #8C8C8C;">
+                启用后所有网络连接将通过代理服务器
+              </span>
+            </a-form-item>
+
+            <a-form-item label="代理协议">
+              <a-select 
+                v-model:value="proxySettings.protocol" 
+                style="width: 200px"
+                :disabled="!proxySettings.enabled"
+              >
+                <a-select-option value="http">HTTP</a-select-option>
+                <a-select-option value="https">HTTPS</a-select-option>
+              </a-select>
+            </a-form-item>
+
+            <a-form-item label="服务器地址">
+              <a-input 
+                v-model:value="proxySettings.host" 
+                placeholder="127.0.0.1"
+                style="width: 300px"
+                :disabled="!proxySettings.enabled"
+              />
+            </a-form-item>
+
+            <a-form-item label="端口">
+              <a-input-number 
+                v-model:value="proxySettings.port" 
+                :min="1" 
+                :max="65535"
+                placeholder="7890"
+                style="width: 200px"
+                :disabled="!proxySettings.enabled"
+              />
+            </a-form-item>
+
+            <a-form-item label="认证">
+              <a-switch 
+                v-model:checked="proxySettings.auth.enabled" 
+                :disabled="!proxySettings.enabled"
+              />
+              <span style="margin-left: 8px; color: #8C8C8C;">
+                如果代理服务器需要身份验证，请启用
+              </span>
+            </a-form-item>
+
+            <a-form-item 
+              v-if="proxySettings.auth.enabled" 
+              label="用户名"
+            >
+              <a-input 
+                v-model:value="proxySettings.auth.username" 
+                placeholder="输入用户名"
+                style="width: 300px"
+                :disabled="!proxySettings.enabled"
+              />
+            </a-form-item>
+
+            <a-form-item 
+              v-if="proxySettings.auth.enabled" 
+              label="密码"
+            >
+              <a-input-password 
+                v-model:value="proxySettings.auth.password" 
+                placeholder="输入密码"
+                style="width: 300px"
+                :disabled="!proxySettings.enabled"
+              />
+            </a-form-item>
+
+            <a-divider style="margin: 24px 0" />
+
+            <a-form-item label="测试 URL">
+              <a-input 
+                v-model:value="testUrl" 
+                placeholder="https://www.google.com"
+                style="width: 400px"
+              >
+                <template #addonAfter>
+                  <a-button 
+                    type="link" 
+                    size="small" 
+                    @click="testUrl = 'https://www.google.com'"
+                    style="padding: 0 8px"
+                  >
+                    重置
+                  </a-button>
+                </template>
+              </a-input>
+              <div style="margin-top: 4px; color: #8C8C8C; font-size: 12px;">
+                用于测试代理连接的 URL，支持 HTTP 和 HTTPS 协议
+                <br/>
+                💡 提示：如果 HTTPS 测试失败（TLS 错误），请使用 HTTP URL（如 <span style="color: #1890FF;">http://www.baidu.com</span>）
+              </div>
+            </a-form-item>
+
+            <a-form-item :wrapper-col="{ offset: 6 }">
+              <a-space>
+                <a-button type="primary" @click="handleSaveProxySettings">保存设置</a-button>
+                <a-button @click="handleTestProxy" :loading="testingProxy">测试连接</a-button>
+                <a-button @click="handleResetProxy">重置为默认</a-button>
+              </a-space>
+            </a-form-item>
+
+            <a-alert
+              v-if="proxySettings.enabled"
+              message="代理配置信息"
+              type="info"
+              show-icon
+              style="margin-top: 16px"
+            >
+              <template #description>
+                <p><strong>当前代理：</strong> {{ getProxyUrl() }}</p>
+                <p style="margin-top: 8px; color: #8C8C8C;">
+                  注意：修改代理设置后需要重启应用才能全面生效
+                </p>
+              </template>
+            </a-alert>
+          </a-form>
+        </div>
+
         <!-- 账户管理 -->
         <div v-if="selectedMenu[0] === 'accounts'" class="settings-panel">
           <h2 class="panel-title">账户管理</h2>
@@ -103,8 +238,13 @@
             <template #renderItem="{ item }">
               <a-list-item>
                 <template #actions>
-                  <a-button type="link">编辑</a-button>
-                  <a-button type="link" danger>删除</a-button>
+                  <a-button type="link" @click="handleEditAccount(item)">编辑</a-button>
+                  <a-popconfirm
+                    title="确定要删除这个账户吗？"
+                    @confirm="handleDeleteAccount(item.id)"
+                  >
+                    <a-button type="link" danger>删除</a-button>
+                  </a-popconfirm>
                 </template>
                 <a-list-item-meta>
                   <template #avatar>
@@ -289,6 +429,7 @@ import {
   InfoCircleOutlined,
   PlusOutlined,
   MailOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons-vue'
 import DOMPurify from 'dompurify'
 import dayjs from 'dayjs'
@@ -298,6 +439,7 @@ import { useSignatureStore } from '@/stores/signature'
 import TemplateFormModal from '@/components/template/TemplateFormModal.vue'
 import SignatureFormModal from '@/components/signature/SignatureFormModal.vue'
 import APP_VERSION from '@/config/version'
+import proxyConfig from '@/config/proxy'
 
 const accountStore = useAccountStore()
 const templateStore = useTemplateStore()
@@ -311,6 +453,11 @@ const settings = ref({
   autoSync: true,
   syncInterval: 15,
 })
+
+// 代理设置
+const proxySettings = ref(proxyConfig.getConfig())
+const testingProxy = ref(false)
+const testUrl = ref('https://www.google.com')
 
 // 模板相关
 const templateFormVisible = ref(false)
@@ -347,6 +494,90 @@ onMounted(async () => {
 function handleSaveSettings() {
   // TODO: 保存设置到本地
   message.success('设置已保存')
+}
+
+// 代理设置方法
+async function handleSaveProxySettings() {
+  try {
+    const success = await proxyConfig.saveConfig(proxySettings.value)
+    if (success) {
+      message.success('代理设置已保存')
+    } else {
+      message.error('保存失败')
+    }
+  } catch (error) {
+    console.error('Save proxy config error:', error)
+    message.error(`保存失败：${error.message}`)
+  }
+}
+
+async function handleTestProxy() {
+  if (!proxySettings.value.enabled) {
+    message.warning('请先启用代理')
+    return
+  }
+  
+  // 验证测试 URL
+  if (!testUrl.value || !testUrl.value.trim()) {
+    message.warning('请输入测试 URL')
+    return
+  }
+  
+  // 简单的 URL 格式验证
+  try {
+    new URL(testUrl.value)
+  } catch (error) {
+    message.warning('请输入有效的 URL（如 https://www.google.com）')
+    return
+  }
+  
+  testingProxy.value = true
+  try {
+    const result = await proxyConfig.testConnection(testUrl.value)
+    if (result.success) {
+      message.success(`代理连接测试成功 (${result.status || 200})`)
+    } else {
+      message.error(`连接失败：${result.message}`)
+    }
+  } catch (error) {
+    message.error(`测试失败：${error.message}`)
+  } finally {
+    testingProxy.value = false
+  }
+}
+
+async function handleResetProxy() {
+  try {
+    await proxyConfig.resetConfig()
+    proxySettings.value = proxyConfig.getConfig()
+    message.success('已重置为默认设置')
+  } catch (error) {
+    console.error('Reset proxy config error:', error)
+    message.error(`重置失败：${error.message}`)
+  }
+}
+
+function getProxyUrl() {
+  const { protocol, host, port, auth } = proxySettings.value
+  if (auth.enabled && auth.username) {
+    return `${protocol}://${auth.username}:***@${host}:${port}`
+  }
+  return `${protocol}://${host}:${port}`
+}
+
+// 账户管理方法
+function handleEditAccount(account) {
+  message.info(`编辑账户：${account.email}（功能开发中...）`)
+  // TODO: 打开账户编辑弹窗
+}
+
+async function handleDeleteAccount(accountId) {
+  try {
+    await accountStore.deleteAccount(accountId)
+    message.success('账户已删除')
+  } catch (error) {
+    message.error(`删除失败：${error.message}`)
+  }
 }
 
 // 模板管理方法

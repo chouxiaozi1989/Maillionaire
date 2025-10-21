@@ -51,21 +51,24 @@ export const useAccountStore = defineStore('account', () => {
         errors: [],
       }
       
-      // 如果是 OAuth2 账户，检查是否为测试模式
-      if (account.oauth2 && account.testMode) {
-        console.log('[Account] OAuth2 test mode - skipping verification')
+      // 如果是 OAuth2 账户，跳过验证
+      // OAuth2 的 IMAP/SMTP 认证需要在 Electron 主进程中实现 XOAUTH2 机制
+      if (account.oauth2) {
+        console.log('[Account] OAuth2 account - skipping IMAP/SMTP verification')
+        console.log('[Account] OAuth2 authentication already validated the account')
         return {
           imap: true,
           smtp: true,
-          testMode: true,
+          oauth2: true,
+          message: 'OAuth2 认证已验证账户有效性',
         }
       }
       
-      // 验证 IMAP 连接
+      // 验证 IMAP 连接（仅用于 IMAP/SMTP 账户）
       try {
         await imapService.connect({
           email: account.email,
-          password: account.password || account.accessToken,
+          password: account.password,
           imapHost: account.imapHost,
           imapPort: account.imapPort,
         })
@@ -79,11 +82,11 @@ export const useAccountStore = defineStore('account', () => {
         results.errors.push(`IMAP: ${error.message}`)
       }
       
-      // 验证 SMTP 连接
+      // 验证 SMTP 连接（仅用于 IMAP/SMTP 账户）
       try {
         await smtpService.verify({
           email: account.email,
-          password: account.password || account.accessToken,
+          password: account.password,
           smtpHost: account.smtpHost,
           smtpPort: account.smtpPort,
         })

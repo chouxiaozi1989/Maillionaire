@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const smtpService = require('./services/smtp-main');
 const imapService = require('./services/imap-main');
 const isDev = !app.isPackaged;
+
+// 代理配置
+let proxyConfig = null;
 
 /**
  * 创建主窗口
@@ -40,8 +43,46 @@ function createWindow() {
 /**
  * 应用启动
  */
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
+  
+  // 加载保存的代理配置
+  try {
+    const configPath = path.join(app.getPath('userData'), 'proxy-config.json');
+    const configData = await fs.readFile(configPath, 'utf-8');
+    proxyConfig = JSON.parse(configData);
+    console.log('[Proxy] Loaded saved config:', proxyConfig?.enabled ? 'enabled' : 'disabled');
+    
+    // 应用到服务
+    if (proxyConfig) {
+      if (imapService) {
+        imapService.setProxyConfig(proxyConfig);
+      }
+      if (smtpService) {
+        smtpService.setProxyConfig(proxyConfig);
+      }
+      
+      // 设置 Electron session 代理
+      if (proxyConfig.enabled) {
+        const { protocol, host, port } = proxyConfig;
+        await session.defaultSession.setProxy({
+          proxyRules: `${protocol}://${host}:${port}`,
+          proxyBypassRules: 'localhost,127.0.0.1'
+        });
+        console.log('[Proxy] Proxy enabled on startup:', `${protocol}://${host}:${port}`);
+      }
+    }
+  } catch (error) {
+    // 配置文件不存在或解析失败，使用默认配置
+    console.log('[Proxy] No saved config found, using defaults');
+    proxyConfig = {
+      enabled: false,
+      protocol: 'http',
+      host: '127.0.0.1',
+      port: 7890,
+      auth: { enabled: false, username: '', password: '' }
+    };
+  }
 
   // macOS特定：点击dock图标时重新创建窗口
   app.on('activate', () => {
@@ -213,4 +254,471 @@ ipcMain.handle('fetch-imap-mails', async (event, uids, options) => {
 
 ipcMain.handle('fetch-and-parse-imap-mails', async (event, uids) => {
   return await imapService.fetchAndParseMails(uids);
+});
+
+/**
+ * 代理配置 IPC 处理器
+ */
+
+// 设置代理配置
+ipcMain.handle('set-proxy-config', async (event, config) => {
+  try {
+    proxyConfig = config;
+    
+    // 保存到文件
+    const configPath = path.join(app.getPath('userData'), 'proxy-config.json');
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    console.log('[Proxy] Config saved to:', configPath);
+    
+    // 应用代理到 IMAP 和 SMTP 服务
+    if (imapService) {
+      imapService.setProxyConfig(config);
+    }
+    if (smtpService) {
+      smtpService.setProxyConfig(config);
+    }
+    
+    // 设置 Electron session 代理
+    if (config && config.enabled) {
+      const { protocol, host, port, auth } = config;
+      let proxyRules = `${protocol}://${host}:${port}`;
+      
+      await session.defaultSession.setProxy({
+        proxyRules: proxyRules,
+        proxyBypassRules: 'localhost,127.0.0.1'
+      });
+      
+      console.log('[Proxy] Proxy enabled:', proxyRules);
+    } else {
+      // 禁用代理
+      await session.defaultSession.setProxy({
+        proxyRules: 'direct://'
+      });
+      console.log('[Proxy] Proxy disabled');
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Proxy] Failed to set proxy config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 获取代理配置
+ipcMain.handle('get-proxy-config', async () => {
+  return proxyConfig;
+});
+
+// 测试代理连接
+ipcMain.handle('test-proxy', async (event, config, testUrl = 'https://www.google.com') => {
+  try {
+    const https = require('https');
+    const http = require('http');
+    const { SocksProxyAgent } = require('socks-proxy-agent');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    
+    const { protocol, host, port, auth } = config;
+    let agent;
+    
+    // 构建代理 URL
+    let proxyUrl;
+    if (auth && auth.enabled && auth.username) {
+      proxyUrl = `${protocol}://${auth.username}:${auth.password}@${host}:${port}`;
+    } else {
+      proxyUrl = `${protocol}://${host}:${port}`;
+    }
+    
+    // 根据协议创建代理 agent
+    if (protocol.startsWith('socks')) {
+      agent = new SocksProxyAgent(proxyUrl, {
+        timeout: 30000,  // SOCKS 连接超时 30 秒
+      });
+    } else {
+      agent = new HttpsProxyAgent(proxyUrl, {
+        timeout: 30000,  // HTTP/HTTPS 代理连接超时 30 秒
+      });
+    }
+    
+    console.log('[Proxy] Testing connection via:', proxyUrl.replace(/:[^:@]+@/, ':***@'));
+    console.log('[Proxy] Testing URL:', testUrl);
+    
+    // 如果是 HTTPS URL，先尝试 HTTP 版本的简单测试
+    let shouldTryHttp = false;
+    if (testUrl.startsWith('https://')) {
+      const httpUrl = testUrl.replace('https://', 'http://');
+      console.log('[Proxy] Will try HTTP first:', httpUrl);
+      shouldTryHttp = true;
+    }
+    
+    // 测试用户提供的 URL
+    const testUrls = shouldTryHttp 
+      ? [testUrl.replace('https://', 'http://'), testUrl]  // 先 HTTP 后 HTTPS
+      : [testUrl];
+    
+    let lastError = null;
+    
+    for (const currentUrl of testUrls) {
+      try {
+        console.log('[Proxy] Trying URL:', currentUrl);
+        
+        const result = await new Promise((resolve, reject) => {
+          const lib = currentUrl.startsWith('https') ? https : http;
+          const url = new URL(currentUrl);
+          
+          const options = {
+            hostname: url.hostname,
+            port: url.port || (currentUrl.startsWith('https') ? 443 : 80),
+            path: url.pathname + url.search,
+            method: 'GET',
+            agent: agent,
+            timeout: 30000, // 增加超时时间到 30 秒
+            // 对于测试连接，我们禁用严格的 SSL 验证
+            rejectUnauthorized: false,
+            // 添加更多的 TLS 选项以兼容性
+            secureOptions: require('constants').SSL_OP_NO_TLSv1 | require('constants').SSL_OP_NO_TLSv1_1,
+          };
+          
+          const req = lib.request(options, (res) => {
+            console.log('[Proxy] Response status:', res.statusCode, 'from', currentUrl);
+            
+            // 200, 204, 301, 302 都表示连接成功
+            if ([200, 204, 301, 302, 400, 403].includes(res.statusCode)) {
+              // 400 和 403 也算成功，因为说明代理连接已建立
+              const isSuccess = [200, 204, 301, 302].includes(res.statusCode);
+              resolve({ 
+                success: isSuccess, 
+                message: isSuccess ? `代理连接成功` : `服务器返回 HTTP ${res.statusCode}（代理连接已建立）`,
+                status: res.statusCode,
+                url: currentUrl 
+              });
+            } else {
+              resolve({ 
+                success: false, 
+                message: `HTTP ${res.statusCode}`,
+                status: res.statusCode,
+                url: currentUrl 
+              });
+            }
+            res.resume(); // 消费响应数据
+          });
+          
+          req.on('error', (error) => {
+            console.error('[Proxy] Request error for', currentUrl, ':', error.message);
+            
+            // 提供更友好的错误信息
+            let friendlyMessage = error.message;
+            if (error.message.includes('ECONNREFUSED')) {
+              friendlyMessage = '代理服务器拒绝连接，请检查代理配置';
+            } else if (error.message.includes('ENOTFOUND')) {
+              friendlyMessage = '无法解析代理服务器地址';
+            } else if (error.message.includes('TLS') || error.message.includes('SSL')) {
+              friendlyMessage = 'TLS/SSL 握手失败，建议使用 HTTP URL 测试';
+            } else if (error.message.includes('ETIMEDOUT') || error.message.includes('timeout')) {
+              friendlyMessage = '连接超时（30秒）';
+            } else if (error.message.includes('socket disconnected')) {
+              friendlyMessage = '代理连接中断，可能不支持 HTTPS 或配置有误';
+            }
+            
+            reject(new Error(friendlyMessage));
+          });
+          
+          req.on('timeout', () => {
+            console.error('[Proxy] Request timeout for', currentUrl);
+            req.destroy();
+            reject(new Error('连接超时（30秒）'));
+          });
+          
+          req.end();
+        });
+        
+        console.log('[Proxy] Test result:', result);
+        
+        // 如果成功或者至少建立了连接（400/403），就返回
+        if (result.success || [400, 403].includes(result.status)) {
+          return result;
+        }
+        
+        lastError = result.message;
+        
+      } catch (error) {
+        console.error('[Proxy] Test failed for', currentUrl, ':', error.message);
+        lastError = error.message;
+        
+        // 如果是最后一个 URL，返回错误
+        if (currentUrl === testUrls[testUrls.length - 1]) {
+          return { 
+            success: false, 
+            message: lastError || '连接失败' 
+          };
+        }
+        
+        // 否则继续尝试下一个 URL
+        continue;
+      }
+    }
+    
+    // 所有尝试都失败
+    return { 
+      success: false, 
+      message: lastError || '连接失败' 
+    };
+    
+  } catch (error) {
+    console.error('[Proxy] Test failed:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+/**
+ * OAuth2 Token 交换 IPC 处理器
+ */
+ipcMain.handle('oauth2-exchange-token', async (event, { provider, code, config }) => {
+  try {
+    const https = require('https');
+    const http = require('http');
+    const { SocksProxyAgent } = require('socks-proxy-agent');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    
+    // 获取代理配置
+    let agent = null;
+    if (proxyConfig && proxyConfig.enabled) {
+      const { protocol, host, port, auth } = proxyConfig;
+      let proxyUrl;
+      if (auth && auth.enabled && auth.username) {
+        proxyUrl = `${protocol}://${auth.username}:${auth.password}@${host}:${port}`;
+      } else {
+        proxyUrl = `${protocol}://${host}:${port}`;
+      }
+      
+      if (protocol.startsWith('socks')) {
+        agent = new SocksProxyAgent(proxyUrl);
+      } else {
+        agent = new HttpsProxyAgent(proxyUrl);
+      }
+      console.log('[OAuth2] Using proxy:', proxyUrl.replace(/:[^:@]+@/, ':***@'));
+    }
+    
+    // 构建请求参数
+    const params = new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code: code,
+      grant_type: 'authorization_code',
+      redirect_uri: config.redirectUri,
+    });
+    
+    const postData = params.toString();
+    const url = new URL(config.tokenUrl);
+    
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData),
+      },
+      agent: agent,
+    };
+    
+    return new Promise((resolve, reject) => {
+      const lib = url.protocol === 'https:' ? https : http;
+      const req = lib.request(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            if (res.statusCode === 200) {
+              resolve({
+                accessToken: result.access_token,
+                refreshToken: result.refresh_token,
+                expiresIn: result.expires_in,
+                expiresAt: Date.now() + result.expires_in * 1000,
+              });
+            } else {
+              reject(new Error(result.error_description || result.error || 'Token exchange failed'));
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        reject(error);
+      });
+      
+      req.write(postData);
+      req.end();
+    });
+  } catch (error) {
+    console.error('[OAuth2] Token exchange failed:', error);
+    throw error;
+  }
+});
+
+/**
+ * Gmail API 请求 IPC 处理器
+ */
+ipcMain.handle('gmail-api-request', async (event, url, options) => {
+  try {
+    const https = require('https');
+    const http = require('http');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    
+    // 如果启用了代理，创建 agent
+    let agent = null;
+    if (proxyConfig && proxyConfig.enabled) {
+      const { protocol, host, port, auth } = proxyConfig;
+      let proxyUrl;
+      if (auth && auth.enabled && auth.username) {
+        proxyUrl = `${protocol}://${auth.username}:${auth.password}@${host}:${port}`;
+      } else {
+        proxyUrl = `${protocol}://${host}:${port}`;
+      }
+      agent = new HttpsProxyAgent(proxyUrl);
+      console.log('[Gmail API] Using proxy:', proxyUrl.replace(/:[^:@]+@/, ':***@'));
+    }
+    
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const requestOptions = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || 443,
+        path: urlObj.pathname + urlObj.search,
+        method: options.method || 'GET',
+        headers: options.headers || {},
+        agent: agent,
+      };
+      
+      const req = https.request(requestOptions, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              const result = data ? JSON.parse(data) : {};
+              resolve(result);
+            } else {
+              const error = data ? JSON.parse(data) : {};
+              reject(new Error(error.error?.message || `HTTP ${res.statusCode}`));
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        console.error('[Gmail API] Request failed:', error);
+        reject(error);
+      });
+      
+      if (options.body) {
+        req.write(options.body);
+      }
+      req.end();
+    });
+  } catch (error) {
+    console.error('[Gmail API] Request error:', error);
+    throw error;
+  }
+});
+
+/**
+ * OAuth2 Token 刷新 IPC 处理器
+ */
+ipcMain.handle('oauth2-refresh-token', async (event, { provider, refreshToken, config }) => {
+  try {
+    const https = require('https');
+    const http = require('http');
+    const { SocksProxyAgent } = require('socks-proxy-agent');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    
+    // 获取代理配置
+    let agent = null;
+    if (proxyConfig && proxyConfig.enabled) {
+      const { protocol, host, port, auth } = proxyConfig;
+      let proxyUrl;
+      if (auth && auth.enabled && auth.username) {
+        proxyUrl = `${protocol}://${auth.username}:${auth.password}@${host}:${port}`;
+      } else {
+        proxyUrl = `${protocol}://${host}:${port}`;
+      }
+      
+      if (protocol.startsWith('socks')) {
+        agent = new SocksProxyAgent(proxyUrl);
+      } else {
+        agent = new HttpsProxyAgent(proxyUrl);
+      }
+      console.log('[OAuth2] Using proxy for refresh:', proxyUrl.replace(/:[^:@]+@/, ':***@'));
+    }
+    
+    // 构建请求参数
+    const params = new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    });
+    
+    const postData = params.toString();
+    const url = new URL(config.tokenUrl);
+    
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData),
+      },
+      agent: agent,
+    };
+    
+    return new Promise((resolve, reject) => {
+      const lib = url.protocol === 'https:' ? https : http;
+      const req = lib.request(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            if (res.statusCode === 200) {
+              resolve({
+                accessToken: result.access_token,
+                expiresIn: result.expires_in,
+                expiresAt: Date.now() + result.expires_in * 1000,
+              });
+            } else {
+              reject(new Error(result.error_description || result.error || 'Token refresh failed'));
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        reject(error);
+      });
+      
+      req.write(postData);
+      req.end();
+    });
+  } catch (error) {
+    console.error('[OAuth2] Token refresh failed:', error);
+    throw error;
+  }
 });

@@ -12,7 +12,8 @@ class OAuth2Service {
     clientSecret: import.meta.env.VITE_GMAIL_CLIENT_SECRET || 'YOUR_GMAIL_CLIENT_SECRET',
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
-    scope: 'https://mail.google.com/',
+    // 添加 Gmail API scope
+    scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels',
     redirectUri: import.meta.env.VITE_OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
   }
 
@@ -91,6 +92,18 @@ class OAuth2Service {
   async exchangeToken(provider, code) {
     const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
 
+    // 在 Electron 环境中使用 IPC 调用（支持代理）
+    if (window.electronAPI && window.electronAPI.oauth2ExchangeToken) {
+      try {
+        console.log('[OAuth2] Exchanging token via Electron IPC (with proxy support)')
+        return await window.electronAPI.oauth2ExchangeToken(provider, code, config)
+      } catch (error) {
+        console.error('[OAuth2] Electron token exchange failed:', error)
+        throw error
+      }
+    }
+
+    // 浏览器环境：使用 fetch（注意：不支持代理）
     const params = new URLSearchParams({
       client_id: config.clientId,
       client_secret: config.clientSecret,
@@ -100,6 +113,7 @@ class OAuth2Service {
     })
 
     try {
+      console.log('[OAuth2] Exchanging token via fetch (browser mode, no proxy)')
       const response = await fetch(config.tokenUrl, {
         method: 'POST',
         headers: {
@@ -134,6 +148,18 @@ class OAuth2Service {
   async refreshToken(provider, refreshToken) {
     const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
 
+    // 在 Electron 环境中使用 IPC 调用（支持代理）
+    if (window.electronAPI && window.electronAPI.oauth2RefreshToken) {
+      try {
+        console.log('[OAuth2] Refreshing token via Electron IPC (with proxy support)')
+        return await window.electronAPI.oauth2RefreshToken(provider, refreshToken, config)
+      } catch (error) {
+        console.error('[OAuth2] Electron token refresh failed:', error)
+        throw error
+      }
+    }
+
+    // 浏览器环境：使用 fetch（注意：不支持代理）
     const params = new URLSearchParams({
       client_id: config.clientId,
       client_secret: config.clientSecret,
@@ -142,6 +168,7 @@ class OAuth2Service {
     })
 
     try {
+      console.log('[OAuth2] Refreshing token via fetch (browser mode, no proxy)')
       const response = await fetch(config.tokenUrl, {
         method: 'POST',
         headers: {
@@ -190,33 +217,89 @@ class OAuth2Service {
           `width=${width},height=${height},left=${left},top=${top}`
         )
 
-        // 监听回调
-        const checkInterval = setInterval(() => {
-          try {
-            if (authWindow.closed) {
-              clearInterval(checkInterval)
-              reject(new Error('Authorization window closed'))
+        if (!authWindow) {
+          reject(new Error('无法打开授权窗口，请检查浏览器弹窗设置'))
+          return
+        }
+
+        // 监听 postMessage 事件（由 OAuthCallback 组件发送）
+        const messageHandler = (event) => {
+          // 验证消息来源（安全检查）
+          if (event.origin !== window.location.origin) {
+            console.warn('Received message from unknown origin:', event.origin)
+            return
+          }
+
+          // 检查是否是 OAuth2 回调消息
+          if (event.data && event.data.type === 'oauth2-callback') {
+            // 移除事件监听
+            window.removeEventListener('message', messageHandler)
+            clearInterval(checkInterval)
+            clearTimeout(timeoutId)
+
+            const { code, state: returnedState, error, error_description } = event.data
+
+            // 关闭授权窗口
+            try {
+              if (authWindow && !authWindow.closed) {
+                authWindow.close()
+              }
+            } catch (e) {
+              // 忽略关闭窗口错误
+            }
+
+            // 处理错误
+            if (error) {
+              reject(new Error(error_description || error))
               return
             }
 
-            const url = new URL(authWindow.location.href)
-            if (url.origin === window.location.origin && url.pathname === '/oauth/callback') {
-              const code = url.searchParams.get('code')
-              const returnedState = url.searchParams.get('state')
+            // 检查授权码
+            if (!code) {
+              reject(new Error('未收到授权码'))
+              return
+            }
 
-              authWindow.close()
+            // 验证 state
+            if (this.validateState(returnedState, email)) {
+              resolve(code)
+            } else {
+              reject(new Error('State 验证失败，可能存在安全风险'))
+            }
+          }
+        }
+
+        // 添加消息监听
+        window.addEventListener('message', messageHandler)
+
+        // 定期检查窗口是否被用户关闭（后备方案）
+        const checkInterval = setInterval(() => {
+          try {
+            // 尝试检查窗口状态（可能因 COOP 失败）
+            if (authWindow.closed) {
+              window.removeEventListener('message', messageHandler)
               clearInterval(checkInterval)
-
-              if (this.validateState(returnedState, email)) {
-                resolve(code)
-              } else {
-                reject(new Error('Invalid state parameter'))
-              }
+              clearTimeout(timeoutId)
+              reject(new Error('用户关闭了授权窗口'))
             }
           } catch (e) {
-            // 跨域错误，窗口还在授权页面
+            // COOP 错误，忽略
           }
-        }, 500)
+        }, 1000)
+
+        // 超时处理（5分钟）
+        const timeoutId = setTimeout(() => {
+          window.removeEventListener('message', messageHandler)
+          clearInterval(checkInterval)
+          try {
+            if (authWindow && !authWindow.closed) {
+              authWindow.close()
+            }
+          } catch (e) {
+            // 忽略关闭错误
+          }
+          reject(new Error('授权超时，请重试'))
+        }, 5 * 60 * 1000)
       } 
       // 在 Electron 环境中
       else if (window.electron) {
@@ -237,9 +320,13 @@ class OAuth2Service {
    */
   async authenticate(provider, email) {
     try {
-      // 测试模式：直接返回模拟数据
-      if (this.isTestMode()) {
-        console.warn('OAuth2 Test Mode: Using mock authentication')
+      // 检查是否配置了 OAuth2 凭证
+      const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
+      const isConfigured = !config.clientId.startsWith('YOUR_')
+
+      // 测试模式：当 OAuth2 未配置时，返回模拟数据
+      if (!isConfigured) {
+        console.warn(`OAuth2 Test Mode: ${provider} credentials not configured, using mock authentication`)
         return {
           success: true,
           email: email,
@@ -250,6 +337,9 @@ class OAuth2Service {
           testMode: true,
         }
       }
+
+      // 生产环境：执行真实的 OAuth2 认证流程
+      console.log(`OAuth2 Production Mode: Starting ${provider} authentication for ${email}`)
 
       // 1. 打开授权窗口获取授权码
       const code = await this.openAuthWindow(provider, email)
@@ -275,12 +365,13 @@ class OAuth2Service {
   }
 
   /**
-   * 检查是否为测试模式
-   * 如果没有配置 client ID，则自动启用测试模式
+   * 检查 OAuth2 凭证是否已配置
+   * @param {string} provider - 提供商 ('gmail' 或 'outlook')
+   * @returns {boolean} 是否已配置
    */
-  isTestMode() {
-    return this.gmailConfig.clientId.startsWith('YOUR_') || 
-           this.outlookConfig.clientId.startsWith('YOUR_')
+  isConfigured(provider) {
+    const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
+    return !config.clientId.startsWith('YOUR_')
   }
 }
 

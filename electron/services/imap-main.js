@@ -9,33 +9,241 @@ const { simpleParser } = require('mailparser');
 class ImapMainService {
   constructor() {
     this.connection = null;
+    this.proxyConfig = null;
+  }
+  
+  /**
+   * 设置代理配置
+   */
+  setProxyConfig(config) {
+    this.proxyConfig = config;
+    console.log('[IMAP] Proxy config updated:', config?.enabled ? 'enabled' : 'disabled');
+  }
+  
+  /**
+   * 获取代理 socket
+   */
+  getProxySocket(host, port) {
+    if (!this.proxyConfig || !this.proxyConfig.enabled) {
+      console.log('[IMAP] Proxy not enabled, using direct connection');
+      return null;
+    }
+    
+    try {
+      const { protocol, host: proxyHost, port: proxyPort, auth } = this.proxyConfig;
+      
+      console.log(`[IMAP] Creating proxy socket: ${protocol}://${proxyHost}:${proxyPort}`);
+      
+      if (protocol.startsWith('socks')) {
+        const { SocksClient } = require('socks');
+        
+        const socksOptions = {
+          proxy: {
+            host: proxyHost,
+            port: proxyPort,
+            type: protocol === 'socks5' ? 5 : 4,
+          },
+          command: 'connect',
+          destination: {
+            host: host,
+            port: port,
+          },
+          timeout: 30000, // 30 秒超时
+        };
+        
+        // 添加认证信息
+        if (auth && auth.enabled && auth.username) {
+          socksOptions.proxy.userId = auth.username;
+          socksOptions.proxy.password = auth.password;
+          console.log('[IMAP] Using proxy authentication');
+        }
+        
+        // 返回一个 Promise，在 connect 时解析
+        return async () => {
+          console.log(`[IMAP] Connecting to ${host}:${port} via SOCKS proxy...`);
+          const info = await SocksClient.createConnection(socksOptions);
+          console.log('[IMAP] SOCKS proxy socket created successfully');
+          return info.socket;
+        };
+      } else if (protocol === 'http' || protocol === 'https') {
+        // HTTP/HTTPS 代理：使用 CONNECT 方法
+        console.log(`[IMAP] Using HTTP/HTTPS proxy with CONNECT method`);
+        
+        return async () => {
+          const net = require('net');
+          const tls = require('tls');
+          
+          return new Promise((resolve, reject) => {
+            console.log(`[IMAP] Connecting to proxy ${proxyHost}:${proxyPort}...`);
+            
+            // 连接到代理服务器
+            const proxySocket = net.connect({
+              host: proxyHost,
+              port: proxyPort,
+              timeout: 30000,
+            });
+            
+            proxySocket.on('connect', () => {
+              console.log(`[IMAP] Connected to proxy, sending CONNECT request...`);
+              
+              // 发送 HTTP CONNECT 请求
+              let connectRequest = `CONNECT ${host}:${port} HTTP/1.1\r\n`;
+              connectRequest += `Host: ${host}:${port}\r\n`;
+              
+              // 如果有认证
+              if (auth && auth.enabled && auth.username) {
+                const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+                connectRequest += `Proxy-Authorization: Basic ${credentials}\r\n`;
+                console.log('[IMAP] Using proxy authentication');
+              }
+              
+              connectRequest += '\r\n';
+              
+              proxySocket.write(connectRequest);
+            });
+            
+            // 监听代理响应
+            let responseData = '';
+            const onData = (data) => {
+              responseData += data.toString();
+              
+              // 检查是否收到完整的 HTTP 响应
+              if (responseData.includes('\r\n\r\n')) {
+                proxySocket.removeListener('data', onData);
+                
+                // 解析响应
+                const statusLine = responseData.split('\r\n')[0];
+                const statusCode = parseInt(statusLine.split(' ')[1]);
+                
+                if (statusCode === 200) {
+                  console.log('[IMAP] HTTP CONNECT successful, tunnel established');
+                  resolve(proxySocket);
+                } else {
+                  console.error(`[IMAP] HTTP CONNECT failed with status ${statusCode}`);
+                  proxySocket.destroy();
+                  reject(new Error(`Proxy CONNECT failed: ${statusCode}`));
+                }
+              }
+            };
+            
+            proxySocket.on('data', onData);
+            
+            proxySocket.on('error', (err) => {
+              console.error('[IMAP] Proxy socket error:', err);
+              reject(err);
+            });
+            
+            proxySocket.on('timeout', () => {
+              console.error('[IMAP] Proxy connection timeout');
+              proxySocket.destroy();
+              reject(new Error('Proxy connection timeout'));
+            });
+          });
+        };
+      } else {
+        console.warn(`[IMAP] Unsupported proxy protocol: ${protocol}`);
+        return null;
+      }
+    } catch (error) {
+      console.error('[IMAP] Failed to create proxy socket:', error);
+      return null;
+    }
   }
   
   /**
    * 连接到IMAP服务器
    */
   async connect(config) {
-    return new Promise((resolve, reject) => {
-      this.connection = new Imap({
-        user: config.email,
-        password: config.password || config.accessToken,
-        host: config.imapHost,
-        port: config.imapPort || 993,
-        tls: config.tls !== false,
-        tlsOptions: { rejectUnauthorized: false },
-      });
-      
-      this.connection.once('ready', () => {
-        console.log('IMAP connection ready');
-        resolve(true);
-      });
-      
-      this.connection.once('error', (err) => {
-        console.error('IMAP connection error:', err);
-        reject(err);
-      });
-      
-      this.connection.connect();
+    return new Promise(async (resolve, reject) => {
+      try {
+        const imapConfig = {
+          user: config.email,
+          password: config.password || config.accessToken,
+          host: config.imapHost,
+          port: config.imapPort || 993,
+          tls: config.tls !== false,
+          tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 30000, // 30 秒连接超时
+          authTimeout: 30000, // 30 秒认证超时
+        };
+        
+        console.log(`[IMAP] Connecting to ${config.imapHost}:${config.imapPort || 993}`);
+        
+        // 添加代理支持
+        const proxySocketFactory = this.getProxySocket(config.imapHost, config.imapPort || 993);
+        if (proxySocketFactory) {
+          try {
+            const socket = await proxySocketFactory();
+            
+            // 检查 socket 状态
+            // 注意：SOCKS 代理返回的 socket 可能处于 connecting 状态
+            // 而 HTTP 代理返回的 socket 已经完全连接（CONNECT 成功后）
+            const isConnected = socket.readyState === 'open' || socket.writable;
+            const isConnecting = socket.connecting || socket.readyState === 'opening';
+            
+            if (isConnecting && !isConnected) {
+              console.log('[IMAP] Waiting for proxy socket to connect...');
+              await new Promise((resolve, reject) => {
+                socket.once('connect', () => {
+                  console.log('[IMAP] Proxy socket connected');
+                  resolve();
+                });
+                socket.once('error', (err) => {
+                  console.error('[IMAP] Proxy socket error:', err);
+                  reject(err);
+                });
+              });
+            } else if (isConnected) {
+              console.log('[IMAP] Proxy socket already connected (HTTP CONNECT)');
+            } else {
+              console.log('[IMAP] Proxy socket state:', {
+                readyState: socket.readyState,
+                connecting: socket.connecting,
+                writable: socket.writable
+              });
+            }
+            
+            imapConfig.socket = socket;
+            console.log('[IMAP] Using proxy socket for connection');
+          } catch (error) {
+            console.error('[IMAP] Proxy connection failed:', error);
+            reject(new Error(`Proxy connection failed: ${error.message}`));
+            return;
+          }
+        } else {
+          console.log('[IMAP] Using direct connection (no proxy)');
+        }
+        
+        this.connection = new Imap(imapConfig);
+        
+        this.connection.once('ready', () => {
+          console.log('[IMAP] Connection ready');
+          resolve(true);
+        });
+        
+        this.connection.once('error', (err) => {
+          console.log('[IMAP] Connection error:', err);
+          reject(err);
+        });
+        
+        this.connection.once('end', () => {
+          console.log('[IMAP] Connection ended');
+        });
+        
+        // 关键修复：如果提供了自定义 socket，不要调用 connect()
+        // 因为 socket 已经连接好了，再次 connect() 会导致 EISCONN 错误
+        if (!imapConfig.socket) {
+          // 没有提供 socket，使用直连，需要调用 connect()
+          this.connection.connect();
+        } else {
+          // 提供了 socket，IMAP 库会自动使用这个 socket
+          // 不需要调用 connect()，直接等待 'ready' 事件
+          console.log('[IMAP] Socket provided, waiting for ready event...');
+        }
+      } catch (error) {
+        console.error('[IMAP] Failed to initiate connection:', error);
+        reject(error);
+      }
     });
   }
   

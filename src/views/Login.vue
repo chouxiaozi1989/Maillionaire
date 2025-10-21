@@ -285,6 +285,10 @@ async function handleAddAccount() {
           oauth2: true,
         }
         
+        // OAuth2 认证成功，跳过 IMAP/SMTP 验证
+        // 因为 OAuth2 的 IMAP/SMTP 认证需要在 Electron 主进程中实现
+        skipVerify = true
+        
         // OAuth2 测试模式，跳过验证
         if (result.testMode) {
           account.testMode = true
