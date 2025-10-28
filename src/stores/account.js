@@ -171,6 +171,8 @@ export const useAccountStore = defineStore('account', () => {
         throw new Error('账户不存在')
       }
 
+      console.log(`[Account] Deleting account ${account.email}...`)
+
       // 1. 删除账户的所有本地数据（邮件、文件夹等）
       console.log(`[Account] Deleting data for account ${account.email}...`)
       await storageService.deleteAccountData(accountId)
@@ -178,16 +180,28 @@ export const useAccountStore = defineStore('account', () => {
       // 2. 从账户列表中移除
       accounts.value = accounts.value.filter(acc => acc.id !== accountId)
       
-      // 3. 如果删除的是当前账户，切换到第一个账户
-      if (currentAccountId.value === accountId) {
-        currentAccountId.value = accounts.value.length > 0 
-          ? accounts.value[0].id 
-          : null
+      // 3. 如果删除的是当前账户，需要重置界面
+      const isDeletingCurrentAccount = currentAccountId.value === accountId
+      
+      if (isDeletingCurrentAccount) {
+        console.log('[Account] Deleting current account, resetting UI...')
         
-        // 更新 localStorage
-        if (currentAccountId.value) {
+        // 3.1 清空邮件 store 的数据
+        const { useMailStore } = await import('./mail')
+        const mailStore = useMailStore()
+        mailStore.resetMailStore()
+        
+        // 3.2 切换到第一个账户（如果还有）
+        if (accounts.value.length > 0) {
+          currentAccountId.value = accounts.value[0].id
           localStorage.setItem('currentAccountId', currentAccountId.value)
+          
+          // 加载新账户的邮件
+          await mailStore.loadMails('inbox')
+          await mailStore.loadFolders()
         } else {
+          // 没有账户了，清除当前账户 ID
+          currentAccountId.value = null
           localStorage.removeItem('currentAccountId')
         }
       }
@@ -196,6 +210,7 @@ export const useAccountStore = defineStore('account', () => {
       await saveAccounts()
       
       console.log(`[Account] Account ${account.email} deleted successfully`)
+      return { isDeletingCurrentAccount }
     } catch (error) {
       console.error('Failed to delete account:', error)
       throw error

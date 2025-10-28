@@ -160,29 +160,47 @@ class StorageService {
    */
   async deleteAccountData(accountId) {
     try {
-      // 删除所有文件夹的邮件
-      const folders = ['inbox', 'sent', 'drafts', 'trash', 'starred']
+      console.log(`[Storage] Starting to delete all data for account ${accountId}...`)
       
-      for (const folder of folders) {
-        const filename = `emails/${accountId}/${folder}.json`
+      // 1. 加载文件夹列表，获取所有文件夹ID（包括自定义文件夹）
+      const foldersData = await this.readJSON('folders.json')
+      const allFolders = foldersData?.folders || []
+      
+      // 提取所有文件夹ID
+      const folderIds = allFolders.map(f => f.id)
+      console.log(`[Storage] Found ${folderIds.length} folders to clean:`, folderIds)
+      
+      // 2. 删除所有文件夹（包括系统和自定义）的邮件数据
+      let deletedCount = 0
+      for (const folderId of folderIds) {
+        const filename = `emails/${accountId}/${folderId}.json`
         try {
           await this.deleteFile(filename)
-          console.log(`[Storage] Deleted ${filename}`)
+          deletedCount++
+          console.log(`[Storage] ✓ Deleted ${filename}`)
         } catch (error) {
-          // 忽略不存在的文件
-          if (error.code !== 'ENOENT') {
-            console.error(`[Storage] Failed to delete ${filename}:`, error)
+          // 忽略不存在的文件（有些文件夹可能还没有邮件）
+          if (error.code !== 'ENOENT' && !error.message?.includes('not found')) {
+            console.error(`[Storage] ✗ Failed to delete ${filename}:`, error)
           }
         }
       }
       
-      // 如果是 Electron 环境，删除整个账户文件夹
+      console.log(`[Storage] Successfully deleted ${deletedCount} email data files`)
+      
+      // 3. 清理 folders.json 中该账户的自定义文件夹
+      // 注意：系统文件夹保留，只删除账户特定的自定义文件夹
+      // 由于当前设计中 folders.json 是全局的，这里不删除，由 mail store 处理
+      
+      // 4. 如果是 Electron 环境，可以考虑删除整个账户文件夹
       if (this.isElectron) {
         // 注意：electronAPI 目前不支持删除文件夹，只能删除文件
-        // 如果需要，可以在主进程添加 deleteFolder API
-        console.log(`[Storage] Account ${accountId} data deletion completed`)
+        // 如果未来添加了 deleteFolder API，可以在这里调用：
+        // await window.electronAPI.deleteFolder(`emails/${accountId}`)
+        console.log(`[Storage] Note: Electron folder deletion not yet implemented`)
       }
       
+      console.log(`[Storage] ✓ Account ${accountId} data deletion completed successfully`)
       return true
     } catch (error) {
       console.error('[Storage] Failed to delete account data:', error)

@@ -227,7 +227,7 @@
         <div v-if="selectedMenu[0] === 'accounts'" class="settings-panel">
           <h2 class="panel-title">账户管理</h2>
 
-          <a-button type="primary" style="margin-bottom: 16px">
+          <a-button type="primary" style="margin-bottom: 16px" @click="handleAddAccount">
             <template #icon>
               <PlusOutlined />
             </template>
@@ -415,11 +415,19 @@
       :signature="currentSignature"
       @submit="handleSignatureSubmit"
     />
+
+    <!-- 账户表单弹窗 -->
+    <AccountFormModal
+      v-model:visible="accountFormVisible"
+      :account="currentAccount"
+      @success="handleAccountSubmit"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   SettingOutlined,
@@ -438,9 +446,11 @@ import { useTemplateStore } from '@/stores/template'
 import { useSignatureStore } from '@/stores/signature'
 import TemplateFormModal from '@/components/template/TemplateFormModal.vue'
 import SignatureFormModal from '@/components/signature/SignatureFormModal.vue'
+import AccountFormModal from '@/components/account/AccountFormModal.vue'
 import APP_VERSION from '@/config/version'
 import proxyConfig from '@/config/proxy'
 
+const router = useRouter()
 const accountStore = useAccountStore()
 const templateStore = useTemplateStore()
 const signatureStore = useSignatureStore()
@@ -453,6 +463,10 @@ const settings = ref({
   autoSync: true,
   syncInterval: 15,
 })
+
+// 账户相关
+const accountFormVisible = ref(false)
+const currentAccount = ref(null)
 
 // 代理设置
 const proxySettings = ref(proxyConfig.getConfig())
@@ -566,16 +580,48 @@ function getProxyUrl() {
 }
 
 // 账户管理方法
+function handleAddAccount() {
+  currentAccount.value = null
+  accountFormVisible.value = true
+}
+
 function handleEditAccount(account) {
-  message.info(`编辑账户：${account.email}（功能开发中...）`)
-  // TODO: 打开账户编辑弹窗
+  currentAccount.value = account
+  accountFormVisible.value = true
+}
+
+async function handleAccountSubmit(account) {
+  // 账户添加/编辑成功后，如果是新账户，切换到新账户
+  if (account && !currentAccount.value) {
+    accountStore.switchAccount(account.id)
+    message.success('已切换到新账户')
+  }
 }
 
 async function handleDeleteAccount(accountId) {
   try {
-    await accountStore.deleteAccount(accountId)
+    const loadingMsg = message.loading('正在删除账户...', 0)
+    
+    // 删除账户（会自动清空邮件和文件夹）
+    const result = await accountStore.deleteAccount(accountId)
+    
+    loadingMsg()
     message.success('账户已删除')
+    
+    // 如果删除的是当前账户，需要重置界面
+    if (result.isDeletingCurrentAccount) {
+      console.log('[Settings] Current account deleted, redirecting...')
+      
+      // 如果还有其他账户，跳转到收件箱
+      if (accountStore.accounts.length > 0) {
+        await router.push('/main/inbox')
+      } else {
+        // 没有账户了，跳转到登录页
+        await router.push('/login')
+      }
+    }
   } catch (error) {
+    console.error('[Settings] Delete account failed:', error)
     message.error(`删除失败：${error.message}`)
   }
 }

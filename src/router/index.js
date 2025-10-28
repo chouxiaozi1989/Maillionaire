@@ -52,6 +52,12 @@ const routes = [
         meta: { title: '回收站' },
       },
       {
+        path: 'starred',
+        name: 'Starred',
+        component: () => import('@/views/mail/Starred.vue'),
+        meta: { title: '星标邮件' },
+      },
+      {
         path: 'contacts',
         name: 'Contacts',
         component: () => import('@/views/Contacts.vue'),
@@ -62,6 +68,12 @@ const routes = [
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
         meta: { title: '设置' },
+      },
+      {
+        path: ':folderId',
+        name: 'CustomFolder',
+        component: () => import('@/views/mail/CustomFolder.vue'),
+        meta: { title: '自定义文件夹' },
       },
     ],
   },

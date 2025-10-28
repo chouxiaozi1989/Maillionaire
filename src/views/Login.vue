@@ -57,6 +57,19 @@
         </template>
         添加邮箱账户
       </a-button>
+
+      <!-- 代理设置入口 -->
+      <a-button
+        type="text"
+        size="small"
+        class="proxy-settings-btn"
+        @click="showProxySettings = true"
+      >
+        <template #icon>
+          <GlobalOutlined />
+        </template>
+        网络代理设置
+      </a-button>
       
       <div class="footer-text">
         {{ APP_VERSION.versionString }} | {{ APP_VERSION.copyright }}
@@ -97,23 +110,173 @@
         <a-alert
           v-if="formData.type === 'qq' || formData.type === '163' || formData.type === '126'"
           message="请使用授权码而非登录密码"
-          description="授权码可在邮箱设置中生成，用于第三方客户端登录"
+          type="warning"
+          show-icon
+          class="auth-code-alert"
+        >
+          <template #description>
+            <div>
+              <p><strong>获取授权码步骤：</strong></p>
+              <ol style="margin: 8px 0; padding-left: 20px;">
+                <li>登录邮箱网页版</li>
+                <li>进入「设置」→「账户」</li>
+                <li>找到「POP3/IMAP/SMTP服务」</li>
+                <li>开启「IMAP/SMTP服务」</li>
+                <li>生成授权码并保存（16位字符）</li>
+                <li>在下方输入框中填写授权码</li>
+              </ol>
+              <p style="color: #ff4d4f; margin-bottom: 0;">注意：授权码不是邮箱登录密码！</p>
+            </div>
+          </template>
+        </a-alert>
+      </a-form>
+    </a-modal>
+
+    <!-- 代理设置弹窗 -->
+    <a-modal
+      v-model:open="showProxySettings"
+      title="网络代理设置"
+      :width="600"
+      :footer="null"
+    >
+      <a-form layout="horizontal" :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
+        <a-form-item label="启用代理">
+          <a-switch v-model:checked="proxySettings.enabled" />
+          <span style="margin-left: 8px; color: #8C8C8C;">
+            启用后所有网络请求将通过代理服务器
+          </span>
+        </a-form-item>
+
+        <a-form-item label="代理协议">
+          <a-select 
+            v-model:value="proxySettings.protocol" 
+            style="width: 200px"
+            :disabled="!proxySettings.enabled"
+          >
+            <a-select-option value="http">HTTP</a-select-option>
+            <a-select-option value="https">HTTPS</a-select-option>
+          </a-select>
+          <div style="margin-top: 4px; color: #8C8C8C; font-size: 12px;">
+            💡 提示：推荐使用 HTTP 协议（HTTPS 可能遇到 TLS 证书问题）
+          </div>
+        </a-form-item>
+
+        <a-form-item label="服务器地址">
+          <a-input 
+            v-model:value="proxySettings.host" 
+            placeholder="127.0.0.1"
+            style="width: 300px"
+            :disabled="!proxySettings.enabled"
+          />
+        </a-form-item>
+
+        <a-form-item label="端口">
+          <a-input-number 
+            v-model:value="proxySettings.port" 
+            :min="1" 
+            :max="65535"
+            placeholder="7890"
+            style="width: 200px"
+            :disabled="!proxySettings.enabled"
+          />
+        </a-form-item>
+
+        <a-form-item label="认证">
+          <a-switch 
+            v-model:checked="proxySettings.auth.enabled" 
+            :disabled="!proxySettings.enabled"
+          />
+          <span style="margin-left: 8px; color: #8C8C8C;">
+            如果代理服务器需要身份验证，请启用
+          </span>
+        </a-form-item>
+
+        <a-form-item 
+          v-if="proxySettings.auth.enabled" 
+          label="用户名"
+        >
+          <a-input 
+            v-model:value="proxySettings.auth.username" 
+            placeholder="输入用户名"
+            style="width: 300px"
+            :disabled="!proxySettings.enabled"
+          />
+        </a-form-item>
+
+        <a-form-item 
+          v-if="proxySettings.auth.enabled" 
+          label="密码"
+        >
+          <a-input-password 
+            v-model:value="proxySettings.auth.password" 
+            placeholder="输入密码"
+            style="width: 300px"
+            :disabled="!proxySettings.enabled"
+          />
+        </a-form-item>
+
+        <a-divider style="margin: 24px 0" />
+
+        <a-form-item label="测试 URL">
+          <a-input 
+            v-model:value="testUrl" 
+            placeholder="https://www.google.com"
+            style="width: 400px"
+          >
+            <template #addonAfter>
+              <a-button 
+                type="link" 
+                size="small" 
+                @click="testUrl = 'https://www.google.com'"
+                style="padding: 0 8px"
+              >
+                重置
+              </a-button>
+            </template>
+          </a-input>
+          <div style="margin-top: 4px; color: #8C8C8C; font-size: 12px;">
+            用于测试代理连接的 URL，支持 HTTP 和 HTTPS 协议
+            <br/>
+            💡 提示：如果 HTTPS 测试失败（TLS 错误），请使用 HTTP URL（如 <span style="color: #1890FF;">http://www.baidu.com</span>）
+          </div>
+        </a-form-item>
+
+        <a-form-item :wrapper-col="{ offset: 6 }">
+          <a-space>
+            <a-button type="primary" @click="handleSaveProxySettings">保存设置</a-button>
+            <a-button @click="handleTestProxy" :loading="testingProxy">测试连接</a-button>
+            <a-button @click="handleResetProxy">重置为默认</a-button>
+          </a-space>
+        </a-form-item>
+
+        <a-alert
+          v-if="proxySettings.enabled"
+          message="代理配置信息"
           type="info"
           show-icon
-        />
+          style="margin-top: 16px"
+        >
+          <template #description>
+            <p><strong>当前代理：</strong> {{ getProxyUrl() }}</p>
+            <p style="margin-top: 8px; color: #8C8C8C;">
+              注意：修改代理设置后需要重启应用才能全面生效
+            </p>
+          </template>
+        </a-alert>
       </a-form>
     </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
-import { MailOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import { MailOutlined, PlusOutlined, EditOutlined, DeleteOutlined, GlobalOutlined } from '@ant-design/icons-vue'
 import { useAccountStore } from '@/stores/account'
 import { oauth2Service } from '@/services/oauth'
 import APP_VERSION from '@/config/version'
+import proxyConfig from '@/config/proxy'
 
 const router = useRouter()
 const accountStore = useAccountStore()
@@ -131,6 +294,12 @@ const formData = reactive({
   password: '',
   name: '',
 })
+
+// 代理设置弹窗
+const showProxySettings = ref(false)
+const proxySettings = ref(proxyConfig.getConfig())
+const testingProxy = ref(false)
+const testUrl = ref('https://www.google.com')
 
 // 邮箱配置
 const emailConfigs = {
@@ -338,8 +507,58 @@ async function handleAddAccount() {
         if (imap && smtp) {
           message.success('账户添加成功，连接验证通过')
         } else {
+          // 更详细的错误信息
+          let errorDetails = []
+          
+          if (!imap) {
+            errorDetails.push('IMAP连接失败')
+            errorDetails.push('请检查：')
+            errorDetails.push('1. 是否已在邮箱网页版开启IMAP服务')
+            errorDetails.push('2. 是否使用授权码（非登录密码）')
+            errorDetails.push('3. 授权码是否正确')
+          }
+          
+          if (!smtp) {
+            if (errorDetails.length > 0) errorDetails.push('')
+            errorDetails.push('SMTP连接失败')
+            errorDetails.push('请检查：')
+            errorDetails.push('1. 是否已在邮箱网页版开启SMTP服务')
+            errorDetails.push('2. 是否使用授权码（非登录密码）')
+          }
+          
           const errorMsg = errors.join('; ')
-          message.warning(`账户已添加，但连接验证失败: ${errorMsg}`)
+          
+          // 使用 Modal 显示详细错误
+          const confirmed = await new Promise((resolve) => {
+            message.destroy()
+            Modal.confirm({
+              title: '连接验证失败',
+              width: 500,
+              content: h('div', [
+                h('p', { style: 'color: #ff4d4f; margin-bottom: 12px; font-weight: 500;' }, `错误信息：${errorMsg}`),
+                h('div', { style: 'margin: 12px 0; padding: 12px; background: #fafafa; border-radius: 4px;' }, 
+                  errorDetails.map(detail => 
+                    h('div', { 
+                      style: detail.startsWith('IMAP') || detail.startsWith('SMTP') 
+                        ? 'margin-top: 8px; font-weight: 500; color: #262626;' 
+                        : 'margin-left: 16px; margin-top: 4px; color: #595959; font-size: 13px;'
+                    }, detail)
+                  )
+                ),
+                h('p', { style: 'color: #8c8c8c; margin-top: 12px; margin-bottom: 0;' }, '是否仍然添加此账户？您可以稍后在设置中修复连接问题。'),
+              ]),
+              okText: '仍然添加',
+              cancelText: '取消',
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false),
+            })
+          })
+          
+          if (!confirmed) {
+            // 用户取消，移除已添加的账户
+            await accountStore.deleteAccount(newAccount.id)
+            return
+          }
         }
       } else {
         message.success('账户添加成功')
@@ -391,6 +610,74 @@ async function handleDeleteAccount(accountId) {
     console.error('Delete account failed:', error)
     message.error('删除账户失败：' + error.message)
   }
+}
+
+// 代理设置方法
+async function handleSaveProxySettings() {
+  try {
+    const success = await proxyConfig.saveConfig(proxySettings.value)
+    if (success) {
+      message.success('代理设置已保存')
+      showProxySettings.value = false
+    } else {
+      message.error('保存失败')
+    }
+  } catch (error) {
+    console.error('Save proxy config error:', error)
+    message.error(`保存失败：${error.message}`)
+  }
+}
+
+async function handleTestProxy() {
+  if (!proxySettings.value.enabled) {
+    message.warning('请先启用代理')
+    return
+  }
+  
+  if (!testUrl.value || !testUrl.value.trim()) {
+    message.warning('请输入测试 URL')
+    return
+  }
+  
+  try {
+    new URL(testUrl.value)
+  } catch (error) {
+    message.warning('请输入有效的 URL（如 https://www.google.com）')
+    return
+  }
+  
+  testingProxy.value = true
+  try {
+    const result = await proxyConfig.testConnection(testUrl.value)
+    if (result.success) {
+      message.success(`代理连接测试成功 (${result.status || 200})`)
+    } else {
+      message.error(`连接失败：${result.message}`)
+    }
+  } catch (error) {
+    message.error(`测试失败：${error.message}`)
+  } finally {
+    testingProxy.value = false
+  }
+}
+
+async function handleResetProxy() {
+  try {
+    await proxyConfig.resetConfig()
+    proxySettings.value = proxyConfig.getConfig()
+    message.success('已重置为默认设置')
+  } catch (error) {
+    console.error('Reset proxy config error:', error)
+    message.error(`重置失败：${error.message}`)
+  }
+}
+
+function getProxyUrl() {
+  const { protocol, host, port, auth } = proxySettings.value
+  if (auth.enabled && auth.username) {
+    return `${protocol}://${auth.username}:***@${host}:${port}`
+  }
+  return `${protocol}://${host}:${port}`
 }
 
 // 初始化：加载账户列表
@@ -516,9 +803,39 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 
+.proxy-settings-btn {
+  margin-top: 16px;
+  width: 100%;
+  color: #8C8C8C;
+  
+  &:hover {
+    color: var(--primary-color);
+  }
+}
+
 .footer-text {
   text-align: center;
   font-size: 12px;
   color: #BFBFBF;
+}
+
+.auth-code-alert {
+  margin-top: 12px;
+  
+  :deep(.ant-alert-description) {
+    p {
+      margin-bottom: 8px;
+    }
+    
+    ol {
+      margin: 8px 0;
+      padding-left: 20px;
+      
+      li {
+        margin-bottom: 4px;
+        color: #595959;
+      }
+    }
+  }
 }
 </style>

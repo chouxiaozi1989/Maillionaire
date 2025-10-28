@@ -156,6 +156,17 @@ class ImapMainService {
   async connect(config) {
     return new Promise(async (resolve, reject) => {
       try {
+        // 如果已经有连接，先断开
+        if (this.connection) {
+          console.log('[IMAP] Disconnecting existing connection...');
+          try {
+            this.connection.end();
+          } catch (e) {
+            console.warn('[IMAP] Error ending existing connection:', e.message);
+          }
+          this.connection = null;
+        }
+        
         const imapConfig = {
           user: config.email,
           password: config.password || config.accessToken,
@@ -214,27 +225,34 @@ class ImapMainService {
           console.log('[IMAP] Using direct connection (no proxy)');
         }
         
-        this.connection = new Imap(imapConfig);
+        // 创建连接对象（暂不赋值给 this.connection）
+        const connection = new Imap(imapConfig);
         
-        this.connection.once('ready', () => {
+        connection.once('ready', () => {
           console.log('[IMAP] Connection ready');
+          // ✅ 在 ready 事件中才设置 this.connection
+          this.connection = connection;
           resolve(true);
         });
         
-        this.connection.once('error', (err) => {
-          console.log('[IMAP] Connection error:', err);
+        connection.once('error', (err) => {
+          console.error('[IMAP] Connection error:', err);
+          this.connection = null;
           reject(err);
         });
         
-        this.connection.once('end', () => {
+        connection.once('end', () => {
           console.log('[IMAP] Connection ended');
+          if (this.connection === connection) {
+            this.connection = null;
+          }
         });
         
         // 关键修复：如果提供了自定义 socket，不要调用 connect()
         // 因为 socket 已经连接好了，再次 connect() 会导致 EISCONN 错误
         if (!imapConfig.socket) {
           // 没有提供 socket，使用直连，需要调用 connect()
-          this.connection.connect();
+          connection.connect();
         } else {
           // 提供了 socket，IMAP 库会自动使用这个 socket
           // 不需要调用 connect()，直接等待 'ready' 事件
@@ -242,6 +260,7 @@ class ImapMainService {
         }
       } catch (error) {
         console.error('[IMAP] Failed to initiate connection:', error);
+        this.connection = null;
         reject(error);
       }
     });
@@ -283,14 +302,19 @@ class ImapMainService {
   async openFolder(folderName) {
     return new Promise((resolve, reject) => {
       if (!this.connection) {
+        console.error('[IMAP] openFolder: Connection is null');
         reject(new Error('IMAP not connected'));
         return;
       }
       
+      console.log(`[IMAP] Opening folder: ${folderName}`);
+      
       this.connection.openBox(folderName, false, (err, box) => {
         if (err) {
+          console.error(`[IMAP] Failed to open folder ${folderName}:`, err);
           reject(err);
         } else {
+          console.log(`[IMAP] Folder ${folderName} opened successfully. Total messages: ${box.messages.total}`);
           resolve(box);
         }
       });
@@ -327,11 +351,17 @@ class ImapMainService {
         return;
       }
       
+      console.log('[IMAP] Fetching server folders...');
+      
       this.connection.getBoxes((err, boxes) => {
         if (err) {
+          console.error('[IMAP] Failed to get boxes:', err);
           reject(err);
           return;
         }
+        
+        // ✅ 输出文件夹名称列表而不是完整对象（避免循环引用）
+        console.log('[IMAP] Server folders:', Object.keys(boxes).join(', '));
         
         // 递归解析文件夹结构
         const parseFolders = (boxTree, parent = '') => {
@@ -340,13 +370,16 @@ class ImapMainService {
           for (const [name, box] of Object.entries(boxTree)) {
             const fullPath = parent ? `${parent}${box.delimiter}${name}` : name;
             
-            folders.push({
+            const folder = {
               name: name,
               path: fullPath,
               delimiter: box.delimiter,
               attributes: box.attribs || [],
               children: box.children ? Object.keys(box.children).length : 0,
-            });
+            };
+            
+            console.log('[IMAP] Parsed folder:', folder);
+            folders.push(folder);
             
             // 递归处理子文件夹
             if (box.children) {
@@ -358,6 +391,7 @@ class ImapMainService {
         };
         
         const folders = parseFolders(boxes);
+        console.log(`[IMAP] Total ${folders.length} folders found`);
         resolve(folders);
       });
     });
@@ -429,14 +463,26 @@ class ImapMainService {
   async markAsRead(uid) {
     return new Promise((resolve, reject) => {
       if (!this.connection) {
+        console.error('[IMAP] markAsRead: Connection is null');
         reject(new Error('IMAP not connected'));
         return;
       }
       
+      // 检查连接状态
+      if (!this.connection._box) {
+        console.error('[IMAP] markAsRead: No mailbox is currently selected');
+        reject(new Error('No mailbox is currently selected'));
+        return;
+      }
+      
+      console.log(`[IMAP] Marking mail ${uid} as read in mailbox: ${this.connection._box.name}`);
+      
       this.connection.addFlags(uid, ['\\Seen'], (err) => {
         if (err) {
+          console.error('[IMAP] markAsRead failed:', err);
           reject(err);
         } else {
+          console.log(`[IMAP] Mail ${uid} marked as read successfully`);
           resolve(true);
         }
       });
@@ -449,18 +495,31 @@ class ImapMainService {
   async deleteMail(uid) {
     return new Promise((resolve, reject) => {
       if (!this.connection) {
+        console.error('[IMAP] deleteMail: Connection is null');
         reject(new Error('IMAP not connected'));
         return;
       }
       
+      // 检查连接状态
+      if (!this.connection._box) {
+        console.error('[IMAP] deleteMail: No mailbox is currently selected');
+        reject(new Error('No mailbox is currently selected'));
+        return;
+      }
+      
+      console.log(`[IMAP] Deleting mail ${uid} from mailbox: ${this.connection._box.name}`);
+      
       this.connection.addFlags(uid, ['\\Deleted'], (err) => {
         if (err) {
+          console.error('[IMAP] deleteMail addFlags failed:', err);
           reject(err);
         } else {
           this.connection.expunge((err) => {
             if (err) {
+              console.error('[IMAP] deleteMail expunge failed:', err);
               reject(err);
             } else {
+              console.log(`[IMAP] Mail ${uid} deleted successfully`);
               resolve(true);
             }
           });
@@ -475,14 +534,26 @@ class ImapMainService {
   async moveMail(uid, targetFolder) {
     return new Promise((resolve, reject) => {
       if (!this.connection) {
+        console.error('[IMAP] moveMail: Connection is null');
         reject(new Error('IMAP not connected'));
         return;
       }
       
+      // 检查连接状态
+      if (!this.connection._box) {
+        console.error('[IMAP] moveMail: No mailbox is currently selected');
+        reject(new Error('No mailbox is currently selected'));
+        return;
+      }
+      
+      console.log(`[IMAP] Moving mail ${uid} to ${targetFolder}`);
+      
       this.connection.move(uid, targetFolder, (err) => {
         if (err) {
+          console.error('[IMAP] moveMail failed:', err);
           reject(err);
         } else {
+          console.log(`[IMAP] Mail ${uid} moved successfully`);
           resolve(true);
         }
       });
@@ -495,14 +566,26 @@ class ImapMainService {
   async copyMail(uid, targetFolder) {
     return new Promise((resolve, reject) => {
       if (!this.connection) {
+        console.error('[IMAP] copyMail: Connection is null');
         reject(new Error('IMAP not connected'));
         return;
       }
       
+      // 检查连接状态
+      if (!this.connection._box) {
+        console.error('[IMAP] copyMail: No mailbox is currently selected');
+        reject(new Error('No mailbox is currently selected'));
+        return;
+      }
+      
+      console.log(`[IMAP] Copying mail ${uid} to ${targetFolder}`);
+      
       this.connection.copy(uid, targetFolder, (err) => {
         if (err) {
+          console.error('[IMAP] copyMail failed:', err);
           reject(err);
         } else {
+          console.log(`[IMAP] Mail ${uid} copied successfully`);
           resolve(true);
         }
       });
@@ -605,11 +688,22 @@ class ImapMainService {
         return;
       }
 
+      console.log(`[IMAP] Fetching and parsing ${uids.length} mails...`);
+      
       const mails = [];
       const fetch = this.connection.fetch(uids, {
         bodies: '',
         struct: true,
       });
+      
+      // 设置超时（60秒）
+      const timeout = setTimeout(() => {
+        console.error('[IMAP] Fetch timeout after 60s');
+        fetch.removeAllListeners();
+        reject(new Error('Mail fetch timeout after 60 seconds'));
+      }, 60000);
+      
+      let processedCount = 0;
 
       fetch.on('message', (msg, seqno) => {
         const mailData = {
@@ -637,7 +731,18 @@ class ImapMainService {
               })) || [],
             };
           } catch (error) {
-            console.error('Failed to parse mail:', error);
+            console.error('[IMAP] Failed to parse mail:', error);
+            // 解析失败也要继续处理，不影响其他邮件
+            mailData.parsed = {
+              from: '',
+              to: '',
+              subject: '(解析失败)',
+              date: new Date(),
+              text: error.message,
+              html: '',
+              textAsHtml: '',
+              attachments: [],
+            };
           }
         });
 
@@ -647,15 +752,21 @@ class ImapMainService {
         });
 
         msg.once('end', () => {
+          processedCount++;
           mails.push(mailData);
+          console.log(`[IMAP] Processed ${processedCount}/${uids.length} mails`);
         });
       });
 
       fetch.once('error', (err) => {
+        clearTimeout(timeout);
+        console.error('[IMAP] Fetch error:', err);
         reject(err);
       });
 
       fetch.once('end', () => {
+        clearTimeout(timeout);
+        console.log(`[IMAP] Fetch completed, total ${mails.length} mails`);
         resolve(mails);
       });
     });

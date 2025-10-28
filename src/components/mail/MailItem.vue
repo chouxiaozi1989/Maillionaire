@@ -4,6 +4,15 @@
     :class="{ unread: !mail.read, selected: isSelected }"
     @click="handleClick"
   >
+    <!-- 多选框 -->
+    <a-checkbox
+      v-if="selectable"
+      :checked="isSelected"
+      @click.stop
+      @change="handleSelectChange"
+      class="mail-checkbox"
+    />
+
     <!-- 未读标记 -->
     <div v-if="!mail.read" class="unread-dot"></div>
 
@@ -83,9 +92,13 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  selectable: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['click', 'star', 'delete'])
+const emit = defineEmits(['click', 'star', 'delete', 'select'])
 
 const isSelected = computed(() => props.selected)
 
@@ -123,7 +136,20 @@ function getPreview(body) {
  * 点击邮件
  */
 function handleClick() {
-  emit('click', props.mail)
+  if (props.selectable) {
+    // 多选模式下，点击切换选中状态
+    handleSelectChange(!isSelected.value)
+  } else {
+    // 正常模式下，打开详情
+    emit('click', props.mail)
+  }
+}
+
+/**
+ * 选中状态改变
+ */
+function handleSelectChange(checked) {
+  emit('select', props.mail, checked)
 }
 </script>
 
@@ -154,6 +180,11 @@ function handleClick() {
   &.selected {
     background: #E6F7FF;
   }
+}
+
+.mail-checkbox {
+  margin-top: 4px;
+  flex-shrink: 0;
 }
 
 .unread-dot {

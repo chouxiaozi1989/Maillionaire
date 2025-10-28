@@ -164,6 +164,9 @@
 
     <!-- 撰写邮件弹窗 -->
     <ComposeModal v-model:visible="showComposeModal" />
+    
+    <!-- 系统设置弹窗 -->
+    <SettingsModal v-model:visible="showSettingsModal" />
 
     <!-- 新建文件夹弹窗 -->
     <a-modal
@@ -201,6 +204,7 @@ import {
 import { useAccountStore } from '@/stores/account'
 import { useMailStore } from '@/stores/mail'
 import ComposeModal from '@/components/mail/ComposeModal.vue'
+import SettingsModal from '@/components/settings/SettingsModal.vue'
 
 const router = useRouter()
 const accountStore = useAccountStore()
@@ -209,6 +213,7 @@ const mailStore = useMailStore()
 // 状态
 const searchKeyword = ref('')
 const showComposeModal = ref(false)
+const showSettingsModal = ref(false)
 const showFolderModal = ref(false)
 const newFolderName = ref('')
 const syncing = ref(false)
@@ -330,16 +335,37 @@ async function handleSync() {
  * 打开设置
  */
 function handleSettings() {
-  router.push('/main/settings')
+  showSettingsModal.value = true
 }
 
 /**
  * 账户切换
  */
-function handleAccountChange(accountId) {
-  accountStore.switchAccount(accountId)
-  mailStore.loadMails('inbox')
-  message.success('已切换账户')
+async function handleAccountChange(accountId) {
+  try {
+    accountStore.switchAccount(accountId)
+    
+    console.log(`[Main] Switching to account ${accountId}`)
+    
+    // 重新加载该账户的文件夹列表
+    await mailStore.loadFolders()
+    
+    // 重新加载邮件
+    await mailStore.loadMails('inbox')
+    
+    // 重置选中的文件夹为收件箱
+    selectedFolders.value = ['inbox']
+    
+    // 如果当前不在收件箱页面，跳转到收件箱
+    if (router.currentRoute.value.path !== '/main/inbox') {
+      router.push('/main/inbox')
+    }
+    
+    message.success('已切换账户')
+  } catch (error) {
+    console.error('Switch account failed:', error)
+    message.error('切换账户失败：' + error.message)
+  }
 }
 
 /**
@@ -490,6 +516,8 @@ onMounted(async () => {
   border-right: 1px solid #F0F0F0;
   display: flex;
   flex-direction: column;
+  height: 100%;  /* ✅ 添加高度限制 */
+  overflow: hidden;  /* ✅ 防止整体溢出 */
 }
 
 .account-selector {
@@ -511,8 +539,29 @@ onMounted(async () => {
 }
 
 .folder-menu {
-  flex: 1;
+  flex: 1;  /* ✅ 占据剩余空间 */
   border-right: none;
+  overflow-y: auto;  /* ✅ 垂直滚动 */
+  overflow-x: hidden;  /* ✅ 水平隐藏 */
+  min-height: 0;  /* ✅ 关键：允许flex子项收缩小于内容 */
+  
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #F5F5F5;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #D9D9D9;
+    border-radius: 3px;
+    
+    &:hover {
+      background: #BFBFBF;
+    }
+  }
   
   :deep(.ant-menu-item) {
     display: flex;
