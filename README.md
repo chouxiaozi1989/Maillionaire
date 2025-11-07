@@ -3,9 +3,9 @@
 <div align="center">
   <h1>📧 Maillionaire</h1>
   <p>专业的跨平台邮件收发客户端</p>
-  <p><strong>版本：v1.1.0</strong> | 更新日期：2025-11-07</p>
+  <p><strong>版本：v1.2.0</strong> | 更新日期：2025-11-07</p>
 
-  [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/maillionaire/maillionaire)
+  [![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/chouxiaozi1989/Maillionaire)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
   [![Electron](https://img.shields.io/badge/Electron-26.2.1-blue.svg)](https://www.electronjs.org/)
   [![Vue](https://img.shields.io/badge/Vue-3.3.4-brightgreen.svg)](https://vuejs.org/)
@@ -91,21 +91,107 @@ npm run electron:dev
 
 ### 构建应用
 
+#### 快速打包
+
 ```bash
-# 构建Web版本
-npm run build
+# 打包当前平台（自动检测操作系统）
+npm run package
 
-# 构建Windows版本
-npm run electron:build:win
+# 打包指定平台
+npm run package:win     # Windows 安装包
+npm run package:mac     # macOS DMG
+npm run package:linux   # Linux AppImage
 
-# 构建macOS版本
-npm run electron:build:mac
-
-# 构建Linux版本
-npm run electron:build:linux
+# 一键打包所有平台
+npm run package:all
 ```
 
-构建产物位于 `dist-electron/` 目录
+#### 分步构建
+
+```bash
+# 1. 构建Web资源
+npm run build
+
+# 2. 构建Electron应用
+npm run electron:build         # 当前平台
+npm run electron:build:win     # Windows
+npm run electron:build:mac     # macOS
+npm run electron:build:linux   # Linux
+```
+
+#### 构建产物
+
+打包完成后，安装包将位于 `dist-electron/` 目录：
+
+| 平台 | 文件名 | 说明 |
+|------|--------|------|
+| Windows | `Maillionaire Setup 1.2.0.exe` | NSIS 安装程序 |
+| macOS | `Maillionaire-1.2.0.dmg` | DMG 磁盘映像 |
+| Linux | `Maillionaire-1.2.0.AppImage` | AppImage 可执行文件 |
+
+#### 构建配置
+
+electron-builder 配置位于 `package.json` 的 `build` 字段：
+
+```json
+{
+  "build": {
+    "appId": "com.maillionaire.app",
+    "productName": "Maillionaire",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "build/icon.png"
+    }
+  }
+}
+```
+
+#### 打包注意事项
+
+1. **环境准备**
+   - Windows: 需要安装 [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
+   - macOS: 需要 Xcode Command Line Tools
+   - Linux: 需要安装 `fpm` 和相关依赖
+
+2. **跨平台打包**
+   - 只能在对应平台上打包该平台的应用
+   - 例如：Windows 应用只能在 Windows 上打包
+   - macOS 应用只能在 macOS 上打包
+   - Linux 应用可以在 Linux 或 macOS 上打包
+
+3. **代码签名**（可选）
+   - Windows: 需要配置代码签名证书
+   - macOS: 需要 Apple Developer 账号和证书
+   - 详见 [electron-builder 文档](https://www.electron.build/code-signing)
+
+4. **依赖检查**
+   ```bash
+   # 检查所有依赖是否安装
+   npm list
+
+   # 清理并重新安装
+   rm -rf node_modules package-lock.json
+   npm install
+   ```
+
+**更多打包详情，请查阅：**
+- [打包说明文档](./docs/打包说明.md) - 详细的打包指南和故障排除
 
 ---
 
