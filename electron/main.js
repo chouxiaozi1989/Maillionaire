@@ -32,12 +32,20 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // 使用 protocol 加载本地文件，确保路径正确
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    console.log('[Main] Loading index.html from:', indexPath);
+    mainWindow.loadFile(indexPath);
   }
 
   // 窗口关闭事件
   mainWindow.on('closed', () => {
     console.log('Main window closed');
+  });
+
+  // 监听加载失败事件
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('[Main] Failed to load:', errorCode, errorDescription);
   });
 }
 
