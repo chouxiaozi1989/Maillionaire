@@ -126,20 +126,25 @@ function getPreview(body) {
   return text.length > 100 ? text.substring(0, 100) + '...' : text
 }
 
-async function loadTrash() {
-  try {
-    loading.value = true
-    await mailStore.loadMails('trash')
-  } catch (error) {
-    message.error('加载回收站失败：' + error.message)
-  } finally {
-    loading.value = false
-  }
+/**
+ * 加载回收站
+ * 注意：现在邮件已经在 Main.vue 中统一加载，这里只需要切换文件夹
+ */
+function loadTrash() {
+  // 邮件已在 Main.vue 中加载，这里只切换文件夹即可
+  mailStore.switchFolder('trash')
 }
 
 async function handleRefresh() {
-  await loadTrash()
-  message.success('刷新成功')
+  try {
+    loading.value = true
+    await mailStore.loadMails()
+    message.success('刷新成功')
+  } catch (error) {
+    message.error('刷新失败：' + error.message)
+  } finally {
+    loading.value = false
+  }
 }
 
 function handleMailClick(mail) {
@@ -182,7 +187,7 @@ async function handleEmptyTrash() {
 }
 
 onMounted(() => {
-  mailStore.switchFolder('trash')
+  // 切换到 trash 文件夹
   loadTrash()
 })
 </script>

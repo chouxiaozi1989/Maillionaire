@@ -64,6 +64,13 @@
               <a-input-number v-model:value="settings.pageSize" :min="10" :max="100" />
             </a-form-item>
 
+            <a-form-item label="每次拉取邮件数">
+              <a-input-number v-model:value="settings.fetchMailLimit" :min="10" :max="200" :step="10" />
+              <div style="margin-top: 4px; color: #8C8C8C; font-size: 12px;">
+                每次从服务器拉取的邮件数量，默认50封
+              </div>
+            </a-form-item>
+
             <a-form-item label="自动同步">
               <a-switch v-model:checked="settings.autoSync" />
               <span style="margin-left: 8px; color: #8C8C8C; font-size: 12px;">
@@ -236,6 +243,9 @@ import {
   GithubOutlined,
   FileTextOutlined,
 } from '@ant-design/icons-vue'
+import { useAppStore } from '@/stores/app'
+
+const appStore = useAppStore()
 
 const props = defineProps({
   visible: {
@@ -255,6 +265,7 @@ const settings = ref({
   theme: 'light',
   language: 'zh-CN',
   pageSize: 50,
+  fetchMailLimit: 50,  // 每次拉取邮件数量
   autoSync: true,
   syncInterval: 15,
 })
@@ -278,8 +289,8 @@ const proxySettings = ref({
 async function loadSettings() {
   try {
     // 加载通用设置
-    // TODO: 从本地存储加载
-    
+    settings.value = { ...settings.value, ...appStore.settings }
+
     // 加载代理设置
     if (window.electronAPI) {
       const config = await window.electronAPI.getProxyConfig()
@@ -297,7 +308,8 @@ async function loadSettings() {
  */
 async function handleSaveSettings() {
   try {
-    // TODO: 保存到本地存储
+    // 保存到 appStore 和 localStorage
+    appStore.saveSettings(settings.value)
     message.success('设置已保存')
   } catch (error) {
     message.error('保存失败：' + error.message)

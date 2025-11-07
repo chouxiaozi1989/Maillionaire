@@ -90,20 +90,25 @@ function getPreview(body) {
   return text.length > 100 ? text.substring(0, 100) + '...' : text
 }
 
-async function loadDrafts() {
-  try {
-    loading.value = true
-    await mailStore.loadMails('drafts')
-  } catch (error) {
-    message.error('加载草稿失败：' + error.message)
-  } finally {
-    loading.value = false
-  }
+/**
+ * 加载草稿
+ * 注意：现在邮件已经在 Main.vue 中统一加载，这里只需要切换文件夹
+ */
+function loadDrafts() {
+  // 邮件已在 Main.vue 中加载，这里只切换文件夹即可
+  mailStore.switchFolder('drafts')
 }
 
 async function handleRefresh() {
-  await loadDrafts()
-  message.success('刷新成功')
+  try {
+    loading.value = true
+    await mailStore.loadMails()
+    message.success('刷新成功')
+  } catch (error) {
+    message.error('刷新失败：' + error.message)
+  } finally {
+    loading.value = false
+  }
 }
 
 function handleEditDraft(draft) {
@@ -121,7 +126,7 @@ async function handleDeleteDraft(draft) {
 }
 
 onMounted(() => {
-  mailStore.switchFolder('drafts')
+  // 切换到 drafts 文件夹
   loadDrafts()
 })
 </script>

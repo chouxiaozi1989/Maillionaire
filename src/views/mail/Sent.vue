@@ -181,15 +181,13 @@ async function handleBatchDelete() {
   }
 }
 
-async function loadMails() {
-  try {
-    loading.value = true
-    await mailStore.loadMails('sent')
-  } catch (error) {
-    message.error('加载邮件失败：' + error.message)
-  } finally {
-    loading.value = false
-  }
+/**
+ * 加载邮件
+ * 注意：现在邮件已经在 Main.vue 中统一加载，这里只需要切换文件夹
+ */
+function loadMails() {
+  // 邮件已在 Main.vue 中加载，这里只切换文件夹即可
+  mailStore.switchFolder('sent')
 }
 
 function handleFilterChange() {
@@ -197,8 +195,16 @@ function handleFilterChange() {
 }
 
 async function handleRefresh() {
-  await loadMails()
-  message.success('刷新成功')
+  // 刷新时重新加载所有邮件
+  try {
+    loading.value = true
+    await mailStore.loadMails()
+    message.success('刷新成功')
+  } catch (error) {
+    message.error('刷新失败：' + error.message)
+  } finally {
+    loading.value = false
+  }
 }
 
 function handleMailClick(mail) {
@@ -226,7 +232,7 @@ async function handleDelete(mail) {
 }
 
 onMounted(() => {
-  mailStore.switchFolder('sent')
+  // 切换到 sent 文件夹
   loadMails()
 })
 </script>

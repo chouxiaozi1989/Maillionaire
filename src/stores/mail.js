@@ -93,8 +93,16 @@ export const useMailStore = defineStore('mail', () => {
    * 当前文件夹的邮件列表
    */
   const currentMails = computed(() => {
-    let filtered = mails.value.filter(mail => mail.folder === currentFolder.value)
-    
+    let filtered = []
+
+    // starred 文件夹特殊处理：显示所有星标邮件
+    if (currentFolder.value === 'starred') {
+      filtered = mails.value.filter(mail => mail.flagged)
+    } else {
+      // 其他文件夹按 folder 字段筛选
+      filtered = mails.value.filter(mail => mail.folder === currentFolder.value)
+    }
+
     // 应用筛选
     if (filter.value.type === 'unread') {
       filtered = filtered.filter(mail => !mail.read)
@@ -105,7 +113,7 @@ export const useMailStore = defineStore('mail', () => {
     } else if (filter.value.type === 'attachment') {
       filtered = filtered.filter(mail => mail.hasAttachment)
     }
-    
+
     // 按日期排序（最新的在前）
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date))
     
@@ -126,14 +134,18 @@ export const useMailStore = defineStore('mail', () => {
   
   /**
    * 加载邮件列表
+   * 加载当前账户的所有邮件，不按文件夹区分
    */
   async function loadMails(folder = 'inbox') {
     try {
       const accountId = accountStore.currentAccountId
       if (!accountId) return
-      
-      const data = await storageService.loadMails(accountId, folder)
+
+      // 加载当前账户的所有邮件（不按文件夹区分）
+      const data = await storageService.loadMails(accountId, 'all')
       mails.value = data || []
+
+      console.log(`[Mail] Loaded ${mails.value.length} mails for account ${accountId}`)
     } catch (error) {
       console.error('Failed to load mails:', error)
       mails.value = []
@@ -207,8 +219,19 @@ export const useMailStore = defineStore('mail', () => {
         'starred': 'STARRED',
       }
 
+      // 映射 Gmail 标签 ID 到系统文件夹 ID
+      const labelToSystemFolderMap = {
+        'INBOX': 'inbox',
+        'SENT': 'sent',
+        'DRAFT': 'drafts',
+        'TRASH': 'trash',
+        'SPAM': 'spam',
+        'STARRED': 'starred',
+      }
+
       const labelId = folderToLabelMap[folderName] || 'INBOX'
-      console.log(`[Mail] Fetching from Gmail label: ${labelId}`)
+      const systemFolderId = labelToSystemFolderMap[labelId] || folderName.toLowerCase()
+      console.log(`[Mail] Fetching from Gmail label: ${labelId}, mapping to folder: ${systemFolderId}`)
 
       // 1. 获取邮件列表
       const { gmailApiService } = await import('@/services/gmail-api')
@@ -256,7 +279,7 @@ export const useMailStore = defineStore('mail', () => {
           gmailId: parsed.id,
           gmailThreadId: parsed.threadId,
           accountId: accountStore.currentAccountId,
-          folder: currentFolder.value,
+          folder: systemFolderId,  // 使用映射后的系统文件夹 ID
           from: parsed.from,
           to: parsed.to,
           cc: parsed.cc,
@@ -301,6 +324,56 @@ export const useMailStore = defineStore('mail', () => {
 
       // 获取有效的访问令牌（如果是 OAuth2 账户）
       const password = await ensureValidToken(account, accountStore)
+
+      // 映射 IMAP 文件夹名称到系统文件夹 ID
+      const imapFolderMapping = {
+        // 英文标准
+        'INBOX': 'inbox',
+        'Sent': 'sent',
+        'Sent Messages': 'sent',
+        'Sent Items': 'sent',
+        'Drafts': 'drafts',
+        'Trash': 'trash',
+        'Deleted': 'trash',
+        'Deleted Messages': 'trash',
+        'Junk': 'spam',
+        'Spam': 'spam',
+        // 中文（QQ、163、126等）
+        '收件箱': 'inbox',
+        '已发送': 'sent',
+        '已发邮件': 'sent',
+        '发件箱': 'sent',
+        '草稿箱': 'drafts',
+        '已删除': 'trash',
+        '已删': 'trash',
+        '垃圾邮件': 'spam',
+        '垃圾箱': 'spam',
+        '广告邮件': 'spam',
+      }
+
+      // 尝试映射文件夹名称，如果没有映射则使用小写的原名称
+      let systemFolderId = imapFolderMapping[folderName]
+
+      if (!systemFolderId) {
+        // 模糊匹配
+        const nameLower = folderName.toLowerCase()
+        if (nameLower === 'inbox') {
+          systemFolderId = 'inbox'
+        } else if (nameLower.includes('sent') || nameLower.includes('发送') || nameLower.includes('发件')) {
+          systemFolderId = 'sent'
+        } else if (nameLower.includes('draft') || nameLower.includes('草稿')) {
+          systemFolderId = 'drafts'
+        } else if (nameLower.includes('trash') || nameLower.includes('deleted') || nameLower.includes('删除')) {
+          systemFolderId = 'trash'
+        } else if (nameLower.includes('junk') || nameLower.includes('spam') || nameLower.includes('垃圾') || nameLower.includes('广告')) {
+          systemFolderId = 'spam'
+        } else {
+          // 如果无法识别，使用小写的原文件夹名
+          systemFolderId = folderName.toLowerCase()
+        }
+      }
+
+      console.log(`[Mail] IMAP folder "${folderName}" mapped to system folder "${systemFolderId}"`)
 
       // 1. 连接 IMAP
       console.log('[Mail] Connecting to IMAP...')
@@ -388,7 +461,7 @@ export const useMailStore = defineStore('mail', () => {
         id: `${accountStore.currentAccountId}_${mail.uid}_${Date.now()}`,
         uid: mail.uid,
         accountId: accountStore.currentAccountId,
-        folder: currentFolder.value,
+        folder: systemFolderId,  // 使用映射后的系统文件夹 ID
         from: mail.parsed?.from || '',
         to: mail.parsed?.to || '',
         cc: mail.parsed?.cc || '',
@@ -577,10 +650,11 @@ export const useMailStore = defineStore('mail', () => {
   
   /**
    * 切换文件夹
+   * 只切换当前文件夹，不重新加载邮件（currentMails 会自动过滤）
    */
-  async function switchFolder(folder) {
+  function switchFolder(folder) {
+    console.log(`[Mail] Switching folder to: ${folder}`)
     currentFolder.value = folder
-    await loadMails(folder)
   }
   
   /**
@@ -592,13 +666,17 @@ export const useMailStore = defineStore('mail', () => {
   
   /**
    * 保存邮件列表
+   * 保存当前账户的所有邮件，不按文件夹区分
    */
   async function saveMails() {
     try {
       const accountId = accountStore.currentAccountId
       if (!accountId) return
-      
-      await storageService.saveMails(accountId, currentFolder.value, mails.value)
+
+      // 保存所有邮件到统一的存储位置
+      await storageService.saveMails(accountId, 'all', mails.value)
+
+      console.log(`[Mail] Saved ${mails.value.length} mails for account ${accountId}`)
     } catch (error) {
       console.error('Failed to save mails:', error)
       throw error

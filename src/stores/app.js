@@ -16,7 +16,15 @@ export const useAppStore = defineStore('app', () => {
   
   // 主题模式
   const theme = ref('light')
-  
+
+  // 应用设置
+  const settings = ref({
+    pageSize: 50,
+    fetchMailLimit: 50,  // 每次拉取邮件数量
+    autoSync: true,
+    syncInterval: 15,
+  })
+
   /**
    * 初始化应用
    */
@@ -29,17 +37,32 @@ export const useAppStore = defineStore('app', () => {
         // 浏览器环境使用localStorage
         appDataPath.value = 'localStorage'
       }
-      
+
       // 加载主题设置
       const savedTheme = localStorage.getItem('theme')
       if (savedTheme) {
         theme.value = savedTheme
       }
-      
+
+      // 加载应用设置
+      const savedSettings = localStorage.getItem('appSettings')
+      if (savedSettings) {
+        settings.value = { ...settings.value, ...JSON.parse(savedSettings) }
+      }
+
       console.log('App initialized, data path:', appDataPath.value)
     } catch (error) {
       console.error('Failed to initialize app:', error)
     }
+  }
+
+  /**
+   * 保存应用设置
+   */
+  function saveSettings(newSettings) {
+    settings.value = { ...settings.value, ...newSettings }
+    localStorage.setItem('appSettings', JSON.stringify(settings.value))
+    console.log('[App] Settings saved:', settings.value)
   }
   
   /**
@@ -76,7 +99,9 @@ export const useAppStore = defineStore('app', () => {
     loading,
     sidebarCollapsed,
     theme,
+    settings,
     init,
+    saveSettings,
     toggleSidebar,
     toggleTheme,
     showLoading,

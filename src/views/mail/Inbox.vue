@@ -242,16 +242,11 @@ async function handleBatchDelete() {
 
 /**
  * 加载邮件
+ * 注意：现在邮件已经在 Main.vue 中统一加载，这里只需要切换文件夹
  */
-async function loadMails() {
-  try {
-    loading.value = true
-    await mailStore.loadMails('inbox')
-  } catch (error) {
-    message.error('加载邮件失败：' + error.message)
-  } finally {
-    loading.value = false
-  }
+function loadMails() {
+  // 邮件已在 Main.vue 中加载，这里只切换文件夹即可
+  mailStore.switchFolder('inbox')
 }
 
 /**
@@ -269,8 +264,15 @@ function handleFilterChange() {
  * 刷新
  */
 async function handleRefresh() {
-  await loadMails()
-  message.success('刷新成功')
+  try {
+    loading.value = true
+    await mailStore.loadMails()
+    message.success('刷新成功')
+  } catch (error) {
+    message.error('刷新失败：' + error.message)
+  } finally {
+    loading.value = false
+  }
 }
 
 /**

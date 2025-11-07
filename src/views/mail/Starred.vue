@@ -91,32 +91,31 @@ const loading = ref(false)
 const selectedMail = ref(null)
 const showDetailModal = ref(false)
 
-// 计算属性：只显示星标邮件
-const mails = computed(() => {
-  return mailStore.mails.filter(mail => mail.flagged)
-})
+// 计算属性：使用 currentMails (已按文件夹筛选)
+const mails = computed(() => mailStore.currentMails)
 
 /**
  * 加载邮件
+ * 注意：现在邮件已经在 Main.vue 中统一加载，这里只需要切换文件夹
  */
-async function loadMails() {
-  loading.value = true
-  try {
-    await mailStore.loadMails('inbox')
-    // 星标邮件从所有邮件中筛选，不需要单独加载
-  } catch (error) {
-    message.error('加载失败：' + error.message)
-  } finally {
-    loading.value = false
-  }
+function loadMails() {
+  // 邮件已在 Main.vue 中加载，这里只切换文件夹即可
+  mailStore.switchFolder('starred')
 }
 
 /**
  * 刷新
  */
 async function handleRefresh() {
-  await loadMails()
-  message.success('刷新成功')
+  try {
+    loading.value = true
+    await mailStore.loadMails()
+    message.success('刷新成功')
+  } catch (error) {
+    message.error('刷新失败：' + error.message)
+  } finally {
+    loading.value = false
+  }
 }
 
 /**

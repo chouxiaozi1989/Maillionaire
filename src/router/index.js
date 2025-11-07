@@ -26,6 +26,7 @@ const routes = [
     name: 'Main',
     component: () => import('@/views/Main.vue'),
     meta: { title: '主界面', requiresAuth: true },
+    redirect: '/main/inbox',  // 默认重定向到收件箱
     children: [
       {
         path: 'inbox',

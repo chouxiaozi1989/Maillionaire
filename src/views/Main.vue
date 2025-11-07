@@ -70,6 +70,7 @@
           v-model:selectedKeys="selectedFolders"
           mode="inline"
           class="folder-menu"
+          style="flex: 1; overflow-y: auto; border-right: none;"
           @select="handleFolderSelect"
         >
           <a-menu-item key="inbox">
@@ -203,12 +204,14 @@ import {
 } from '@ant-design/icons-vue'
 import { useAccountStore } from '@/stores/account'
 import { useMailStore } from '@/stores/mail'
+import { useAppStore } from '@/stores/app'
 import ComposeModal from '@/components/mail/ComposeModal.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
 
 const router = useRouter()
 const accountStore = useAccountStore()
 const mailStore = useMailStore()
+const appStore = useAppStore()
 
 // 状态
 const searchKeyword = ref('')
@@ -299,11 +302,11 @@ async function handleSync() {
         const mailMsg = message.loading('正在拉取最新邮件...', 0)
         try {
           const newMails = await mailStore.fetchMailsFromServer('INBOX', {
-            limit: 50,
+            limit: appStore.settings.fetchMailLimit || 50,
             unreadOnly: false,
           })
           mailMsg()
-          
+
           if (newMails && newMails.length > 0) {
             message.success(`成功拉取 ${newMails.length} 封新邮件`)
           } else {
@@ -516,8 +519,15 @@ onMounted(async () => {
   border-right: 1px solid #F0F0F0;
   display: flex;
   flex-direction: column;
-  height: 100%;  /* ✅ 添加高度限制 */
-  overflow: hidden;  /* ✅ 防止整体溢出 */
+  height: 100%;
+  overflow: hidden;
+
+  /* 确保 ant-layout-sider 内容正确显示 */
+  :deep(.ant-layout-sider-children) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
 }
 
 .account-selector {
@@ -539,36 +549,47 @@ onMounted(async () => {
 }
 
 .folder-menu {
-  flex: 1;  /* ✅ 占据剩余空间 */
+  flex: 1;
   border-right: none;
-  overflow-y: auto;  /* ✅ 垂直滚动 */
-  overflow-x: hidden;  /* ✅ 水平隐藏 */
-  min-height: 0;  /* ✅ 关键：允许flex子项收缩小于内容 */
-  
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  min-height: 0;
+  max-height: 100%;
+
   /* 自定义滚动条样式 */
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: #F5F5F5;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: #D9D9D9;
     border-radius: 3px;
-    
+
     &:hover {
       background: #BFBFBF;
     }
   }
-  
+
+  /* 确保 ant-menu 内部元素也支持滚动 */
+  :deep(.ant-menu) {
+    border-right: none;
+  }
+
+  :deep(ul) {
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
   :deep(.ant-menu-item) {
     display: flex;
     align-items: center;
     margin: 4px 8px;
     border-radius: 6px;
-    
+
     &.ant-menu-item-selected {
       background: #E6F7FF;
       color: #1890FF;
