@@ -17,7 +17,10 @@
       "Bash(powershell -Command \"Get-Content ''C:\\Users\\Administrator\\Documents\\Maillionaire\\electron\\main.js'' -Tail 2\")",
       "Bash(powershell -Command \"(Get-Content ''C:\\Users\\Administrator\\Documents\\Maillionaire\\src\\stores\\mail.js'' | Measure-Object -Line).Lines\")",
       "Bash(powershell -Command:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
