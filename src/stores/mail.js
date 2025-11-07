@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { storageService } from '@/services/storage'
 import { useAccountStore } from './account'
+import { useAppStore } from './app'
 
 /**
  * 检查并刷新 OAuth2 令牌（如果需要）
@@ -59,7 +60,8 @@ async function ensureValidToken(account, accountStore) {
  */
 export const useMailStore = defineStore('mail', () => {
   const accountStore = useAccountStore()
-  
+  const appStore = useAppStore()
+
   // 邮件列表
   const mails = ref([])
   
@@ -1234,14 +1236,22 @@ export const useMailStore = defineStore('mail', () => {
    */
   async function deleteMailFromServer(mailId) {
     try {
-      const account = accountStore.currentAccount
-      if (!account) {
-        throw new Error('请先选择账户')
-      }
-
       const mail = mails.value.find(m => m.id === mailId)
       if (!mail) {
         throw new Error('邮件不存在')
+      }
+
+      // 检查是否需要同步到服务器
+      if (!appStore.settings.syncDeleteToServer) {
+        console.log('[Mail] Delete sync disabled, only updating local state')
+        // 只更新本地状态
+        await updateMail(mailId, { folder: 'trash' })
+        return
+      }
+
+      const account = accountStore.currentAccount
+      if (!account) {
+        throw new Error('请先选择账户')
       }
 
       // 检测是否为 Gmail 账户
@@ -1598,7 +1608,18 @@ export const useMailStore = defineStore('mail', () => {
 
     try {
       console.log(`[Mail] Batch deleting ${mailIds.length} mails...`)
-      
+
+      // 检查是否需要同步到服务器
+      if (!appStore.settings.syncDeleteToServer) {
+        console.log('[Mail] Delete sync disabled, only updating local state')
+        // 只更新本地状态
+        for (const mailId of mailIds) {
+          await updateMail(mailId, { folder: 'trash' })
+        }
+        console.log('[Mail] Batch delete (local only) completed')
+        return
+      }
+
       const account = accountStore.currentAccount
       if (!account) {
         throw new Error('请先选择账户')
@@ -1702,7 +1723,55 @@ export const useMailStore = defineStore('mail', () => {
     const currentIds = currentMails.value.map(m => m.id)
     selectedMailIds.value = currentIds.filter(id => !selectedMailIds.value.includes(id))
   }
-  
+
+  /**
+   * 导出邮件为CSV和ZIP
+   * @param {string[]} mailIds - 要导出的邮件ID列表（如果为空则导出所有已选邮件）
+   * @returns {Promise<Object>} 导出结果
+   */
+  async function exportMails(mailIds = null) {
+    try {
+      // 确定要导出的邮件ID
+      const idsToExport = mailIds || selectedMailIds.value
+
+      if (!idsToExport || idsToExport.length === 0) {
+        throw new Error('请先选择要导出的邮件')
+      }
+
+      console.log(`[Mail] Exporting ${idsToExport.length} mails...`)
+
+      // 获取邮件完整数据
+      const mailsToExport = mails.value.filter(m => idsToExport.includes(m.id))
+
+      if (mailsToExport.length === 0) {
+        throw new Error('未找到要导出的邮件')
+      }
+
+      // 获取所有账户信息（用于获取附件）
+      const accounts = accountStore.accounts || []
+
+      // 转换为普通对象（去除响应式代理），避免 IPC 序列化问题
+      const plainMails = JSON.parse(JSON.stringify(mailsToExport))
+      const plainAccounts = JSON.parse(JSON.stringify(accounts))
+
+      // 调用主进程导出API
+      const result = await window.electronAPI.exportMails(plainMails, plainAccounts)
+
+      if (result.success) {
+        console.log('[Mail] Export completed successfully')
+        return result
+      } else if (result.canceled) {
+        console.log('[Mail] Export canceled by user')
+        return result
+      } else {
+        throw new Error(result.error || '导出失败')
+      }
+    } catch (error) {
+      console.error('[Mail] Export failed:', error)
+      throw error
+    }
+  }
+
   return {
     mails,
     currentFolder,
@@ -1747,5 +1816,7 @@ export const useMailStore = defineStore('mail', () => {
     batchDelete,
     selectAll,
     invertSelection,
+    // 导出方法
+    exportMails,
   }
 })

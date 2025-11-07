@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const smtpService = require('./services/smtp-main');
 const imapService = require('./services/imap-main');
+const exportService = require('./services/export-service');
 const isDev = !app.isPackaged;
 
 // 代理配置
@@ -722,3 +723,191 @@ ipcMain.handle('oauth2-refresh-token', async (event, { provider, refreshToken, c
     throw error;
   }
 });
+
+/**
+ * 邮件导出 IPC 处理器
+ */
+
+// 导出邮件为CSV和ZIP
+ipcMain.handle('export-mails', async (event, { mails, accounts }) => {
+  try {
+    console.log('[Export] Starting export for', mails.length, 'mails');
+
+    // 显示保存对话框
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+      title: '选择导出目录',
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const outputDir = result.filePaths[0];
+
+    // 定义获取附件的函数
+    const getAttachment = async (accountId, mail, attachment) => {
+      try {
+        const account = accounts.find(acc => acc.id === accountId);
+        if (!account) {
+          console.error('[Export] Account not found:', accountId);
+          return null;
+        }
+
+        if (account.protocol === 'gmail') {
+          // Gmail API 获取附件
+          if (!attachment.attachmentId || !mail.gmailId) {
+            console.error('[Export] Missing Gmail attachment data');
+            return null;
+          }
+
+          // 调用Gmail API获取附件
+          const attachmentData = await getGmailAttachment(
+            account.accessToken,
+            mail.gmailId,
+            attachment.attachmentId
+          );
+
+          if (attachmentData && attachmentData.data) {
+            // Gmail API返回base64 URL编码的数据，需要转换
+            const base64 = attachmentData.data.replace(/-/g, '+').replace(/_/g, '/');
+            const padding = '='.repeat((4 - base64.length % 4) % 4);
+            const paddedBase64 = base64 + padding;
+            const content = Buffer.from(paddedBase64, 'base64');
+
+            return {
+              content,
+              filename: attachment.filename,
+              contentType: attachment.contentType || attachment.mimeType,
+              size: attachment.size,
+            };
+          }
+        } else if (account.protocol === 'imap') {
+          // IMAP 获取附件
+          if (!mail.uid) {
+            console.error('[Export] Missing IMAP UID');
+            return null;
+          }
+
+          // 先连接到IMAP服务器
+          await imapService.connect({
+            host: account.imapHost,
+            port: account.imapPort,
+            secure: account.imapSecure,
+            auth: {
+              user: account.email,
+              pass: account.password,
+            },
+          });
+
+          // 打开邮件所在的文件夹
+          await imapService.openFolder(mail.folder || 'INBOX');
+
+          // 获取该邮件的所有附件
+          const attachments = await imapService.getMailAttachments(mail.uid);
+
+          // 查找匹配的附件
+          const matchedAttachment = attachments.find(att =>
+            att.filename === attachment.filename && att.size === attachment.size
+          );
+
+          if (matchedAttachment) {
+            return {
+              content: matchedAttachment.content,
+              filename: matchedAttachment.filename,
+              contentType: matchedAttachment.contentType,
+              size: matchedAttachment.size,
+            };
+          }
+        }
+
+        return null;
+      } catch (error) {
+        console.error('[Export] Failed to get attachment:', error);
+        return null;
+      }
+    };
+
+    // 定义进度回调函数
+    const onProgress = (progress) => {
+      // 发送进度事件到渲染进程
+      event.sender.send('export-progress', progress);
+    };
+
+    // 执行导出
+    const exportResult = await exportService.exportMails(mails, outputDir, {
+      getAttachment,
+      onProgress,
+    });
+
+    console.log('[Export] Export completed:', exportResult);
+
+    return exportResult;
+  } catch (error) {
+    console.error('[Export] Export failed:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+// Gmail附件获取辅助函数
+async function getGmailAttachment(accessToken, messageId, attachmentId) {
+  const https = require('https');
+  const { HttpsProxyAgent } = require('https-proxy-agent');
+
+  let agent = null;
+  if (proxyConfig && proxyConfig.enabled) {
+    const { protocol, host, port, auth } = proxyConfig;
+    let proxyUrl;
+    if (auth && auth.enabled && auth.username) {
+      proxyUrl = `${protocol}://${auth.username}:${auth.password}@${host}:${port}`;
+    } else {
+      proxyUrl = `${protocol}://${host}:${port}`;
+    }
+    agent = new HttpsProxyAgent(proxyUrl);
+  }
+
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`;
+
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const requestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      agent: agent,
+    };
+
+    const req = https.request(requestOptions, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            const result = data ? JSON.parse(data) : {};
+            resolve(result);
+          } else {
+            const error = data ? JSON.parse(data) : {};
+            reject(new Error(error.error?.message || `HTTP ${res.statusCode}`));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.end();
+  });
+}
+

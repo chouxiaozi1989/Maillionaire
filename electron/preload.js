@@ -57,4 +57,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Gmail API 操作
   gmailApiRequest: (url, options) => ipcRenderer.invoke('gmail-api-request', url, options),
+
+  // 邮件导出操作
+  exportMails: (mails, accounts) => ipcRenderer.invoke('export-mails', { mails, accounts }),
+
+  // 导出进度监听
+  onExportProgress: (callback) => {
+    const listener = (event, progress) => callback(progress);
+    ipcRenderer.on('export-progress', listener);
+    // 返回清理函数
+    return () => ipcRenderer.removeListener('export-progress', listener);
+  },
 });

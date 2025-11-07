@@ -651,6 +651,32 @@ class GmailApiService {
   }
 
   /**
+   * 获取邮件附件
+   * @param {string} accessToken - OAuth2 访问令牌
+   * @param {string} messageId - 邮件 ID
+   * @param {string} attachmentId - 附件 ID
+   * @returns {Promise<Object>} 附件数据 { data: base64编码的数据, size: 大小 }
+   */
+  async getAttachment(accessToken, messageId, attachmentId) {
+    try {
+      console.log(`[Gmail API] Fetching attachment: ${attachmentId} from message: ${messageId}`)
+      const url = `${this.baseUrl}/messages/${messageId}/attachments/${attachmentId}`
+      const response = await this.makeRequest(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      return response
+    } catch (error) {
+      console.error('[Gmail API] Failed to get attachment:', error)
+      throw error
+    }
+  }
+
+  /**
    * 解码 Base64 URL 编码的字符串
    * @param {string} str - Base64 URL 编码的字符串
    * @returns {string} 解码后的字符串
@@ -662,7 +688,7 @@ class GmailApiService {
       // 添加 padding
       const padding = '='.repeat((4 - base64.length % 4) % 4)
       const paddedBase64 = base64 + padding
-      
+
       // 解码
       return decodeURIComponent(escape(atob(paddedBase64)))
     } catch (error) {

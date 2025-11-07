@@ -44,6 +44,13 @@
                 删除
               </a-button>
             </a-popconfirm>
+
+            <a-button type="primary" @click="handleExportMails" :loading="exporting">
+              <template #icon>
+                <ExportOutlined />
+              </template>
+              导出
+            </a-button>
           </a-space>
         </template>
 
@@ -127,6 +134,27 @@
       @forward="handleForward"
       @delete="handleDelete"
     />
+
+    <!-- 导出进度弹窗 -->
+    <a-modal
+      v-model:open="showExportProgress"
+      title="导出邮件"
+      :closable="false"
+      :maskClosable="false"
+      :footer="null"
+      width="500px"
+    >
+      <div class="export-progress-container">
+        <a-progress
+          :percent="exportProgress.percent"
+          :status="exportProgress.percent === 100 ? 'success' : 'active'"
+        />
+        <p class="progress-message">{{ exportProgress.message }}</p>
+        <p v-if="exportProgress.current && exportProgress.total" class="progress-detail">
+          {{ exportProgress.current }} / {{ exportProgress.total }}
+        </p>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -139,6 +167,7 @@ import {
   BorderOutlined,
   CheckOutlined,
   DeleteOutlined,
+  ExportOutlined,
 } from '@ant-design/icons-vue'
 import { useMailStore } from '@/stores/mail'
 import MailItem from '@/components/mail/MailItem.vue'
@@ -148,6 +177,15 @@ const mailStore = useMailStore()
 
 // 状态
 const loading = ref(false)
+const exporting = ref(false)
+const showExportProgress = ref(false)
+const exportProgress = ref({
+  percent: 0,
+  message: '准备导出...',
+  step: '',
+  current: 0,
+  total: 0,
+})
 const filterType = ref('all')
 const dateRange = ref('all')
 const limit = ref(50)
@@ -237,6 +275,85 @@ async function handleBatchDelete() {
     message.error('批量删除失败：' + error.message)
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * 导出邮件
+ */
+async function handleExportMails() {
+  if (selectedCount.value === 0) {
+    message.warning('请先选择要导出的邮件')
+    return
+  }
+
+  // 设置进度监听器
+  let progressCleanup = null
+
+  try {
+    exporting.value = true
+    showExportProgress.value = true
+
+    // 重置进度
+    exportProgress.value = {
+      percent: 0,
+      message: '准备导出...',
+      step: '',
+      current: 0,
+      total: 0,
+    }
+
+    // 注册进度监听器
+    if (window.electronAPI?.onExportProgress) {
+      progressCleanup = window.electronAPI.onExportProgress((progress) => {
+        exportProgress.value = {
+          percent: progress.percent || 0,
+          message: progress.message || '导出中...',
+          step: progress.step || '',
+          current: progress.current || 0,
+          total: progress.total || 0,
+        }
+      })
+    }
+
+    const result = await mailStore.exportMails()
+
+    if (result.canceled) {
+      showExportProgress.value = false
+      message.info('已取消导出')
+      return
+    }
+
+    if (result.success) {
+      // 等待一小段时间让用户看到100%进度
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      showExportProgress.value = false
+
+      const hasAttachments = result.zipPath ? '（含附件）' : ''
+      message.success({
+        content: `成功导出 ${result.mailCount} 封邮件${hasAttachments}`,
+        duration: 3,
+      })
+
+      // 清空选中
+      mailStore.clearSelection()
+
+      // 可选：退出多选模式
+      isSelectMode.value = false
+    } else {
+      throw new Error(result.error || '导出失败')
+    }
+  } catch (error) {
+    console.error('Export error:', error)
+    showExportProgress.value = false
+    message.error('导出失败：' + error.message)
+  } finally {
+    exporting.value = false
+    // 清理进度监听器
+    if (progressCleanup) {
+      progressCleanup()
+    }
   }
 }
 
@@ -399,5 +516,24 @@ onMounted(() => {
   text-align: center;
   border-top: 1px solid #F0F0F0;
   background: white;
+}
+
+.export-progress-container {
+  padding: 20px 0;
+}
+
+.progress-message {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #333;
+  text-align: center;
+}
+
+.progress-detail {
+  margin: 0;
+  font-size: 12px;
+  color: #999;
+  text-align: center;
 }
 </style>

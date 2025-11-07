@@ -89,6 +89,13 @@
               <a-slider v-model:value="settings.syncInterval" :min="1" :max="60" :marks="{ 5: '5分钟', 30: '30分钟', 60: '60分钟' }" />
             </a-form-item>
 
+            <a-form-item label="删除同步到服务器">
+              <a-switch v-model:checked="settings.syncDeleteToServer" />
+              <span style="margin-left: 8px; color: #8C8C8C;">
+                关闭后，删除邮件仅在本地生效，不会同步到服务器
+              </span>
+            </a-form-item>
+
             <a-form-item :wrapper-col="{ offset: 6 }">
               <a-button type="primary" @click="handleSaveSettings">保存设置</a-button>
             </a-form-item>
@@ -442,6 +449,7 @@ import {
 import DOMPurify from 'dompurify'
 import dayjs from 'dayjs'
 import { useAccountStore } from '@/stores/account'
+import { useAppStore } from '@/stores/app'
 import { useTemplateStore } from '@/stores/template'
 import { useSignatureStore } from '@/stores/signature'
 import TemplateFormModal from '@/components/template/TemplateFormModal.vue'
@@ -451,6 +459,7 @@ import APP_VERSION from '@/config/version'
 import proxyConfig from '@/config/proxy'
 
 const router = useRouter()
+const appStore = useAppStore()
 const accountStore = useAccountStore()
 const templateStore = useTemplateStore()
 const signatureStore = useSignatureStore()
@@ -459,9 +468,10 @@ const selectedMenu = ref(['general'])
 const settings = ref({
   theme: 'light',
   language: 'zh-CN',
-  pageSize: 20,
-  autoSync: true,
-  syncInterval: 15,
+  pageSize: appStore.settings.pageSize || 20,
+  autoSync: appStore.settings.autoSync,
+  syncInterval: appStore.settings.syncInterval || 15,
+  syncDeleteToServer: appStore.settings.syncDeleteToServer,
 })
 
 // 账户相关
@@ -506,7 +516,13 @@ onMounted(async () => {
 })
 
 function handleSaveSettings() {
-  // TODO: 保存设置到本地
+  // Save settings to app store
+  appStore.saveSettings({
+    pageSize: settings.value.pageSize,
+    autoSync: settings.value.autoSync,
+    syncInterval: settings.value.syncInterval,
+    syncDeleteToServer: settings.value.syncDeleteToServer,
+  })
   message.success('设置已保存')
 }
 

@@ -712,9 +712,26 @@ class ImapMainService {
           parsed: null,
         };
 
+        let bodyParsed = false;
+        let attributesReceived = false;
+
+        // 检查是否两个事件都完成
+        const checkComplete = () => {
+          if (bodyParsed && attributesReceived) {
+            processedCount++;
+            mails.push(mailData);
+            console.log(`[IMAP] Processed ${processedCount}/${uids.length} mails - UID: ${mailData.uid}, Subject: ${mailData.parsed?.subject || '(无主题)'}, Has content: ${!!(mailData.parsed?.html || mailData.parsed?.text)}`);
+          }
+        };
+
         msg.on('body', async (stream, info) => {
           try {
+            console.log(`[IMAP] Parsing mail body for seqno: ${seqno}`);
             const parsed = await simpleParser(stream);
+
+            // 记录解析结果
+            console.log(`[IMAP] Parsed mail - Subject: ${parsed.subject}, Has HTML: ${!!parsed.html}, Has Text: ${!!parsed.text}`);
+
             mailData.parsed = {
               from: parsed.from?.text || '',
               to: parsed.to?.text || '',
@@ -730,6 +747,9 @@ class ImapMainService {
                 size: att.size,
               })) || [],
             };
+
+            bodyParsed = true;
+            checkComplete();
           } catch (error) {
             console.error('[IMAP] Failed to parse mail:', error);
             // 解析失败也要继续处理，不影响其他邮件
@@ -743,18 +763,16 @@ class ImapMainService {
               textAsHtml: '',
               attachments: [],
             };
+            bodyParsed = true;
+            checkComplete();
           }
         });
 
         msg.once('attributes', (attrs) => {
           mailData.uid = attrs.uid;
           mailData.flags = attrs.flags;
-        });
-
-        msg.once('end', () => {
-          processedCount++;
-          mails.push(mailData);
-          console.log(`[IMAP] Processed ${processedCount}/${uids.length} mails`);
+          attributesReceived = true;
+          checkComplete();
         });
       });
 
@@ -768,6 +786,60 @@ class ImapMainService {
         clearTimeout(timeout);
         console.log(`[IMAP] Fetch completed, total ${mails.length} mails`);
         resolve(mails);
+      });
+    });
+  }
+
+  /**
+   * 获取邮件附件内容
+   * @param {number} uid - 邮件UID
+   * @returns {Promise<Array>} 附件数组，每个附件包含 {filename, contentType, size, content: Buffer}
+   */
+  async getMailAttachments(uid) {
+    return new Promise((resolve, reject) => {
+      if (!this.connection) {
+        return reject(new Error('IMAP not connected'));
+      }
+
+      console.log(`[IMAP] Fetching attachments for mail UID: ${uid}`);
+
+      const fetch = this.connection.fetch(uid, {
+        bodies: '',
+        struct: true,
+      });
+
+      const attachments = [];
+
+      fetch.on('message', (msg) => {
+        msg.on('body', async (stream) => {
+          try {
+            const parsed = await simpleParser(stream);
+
+            // 提取包含content的完整附件
+            if (parsed.attachments && parsed.attachments.length > 0) {
+              parsed.attachments.forEach(att => {
+                attachments.push({
+                  filename: att.filename,
+                  contentType: att.contentType,
+                  size: att.size,
+                  content: att.content, // Buffer
+                });
+              });
+            }
+          } catch (error) {
+            console.error('[IMAP] Failed to parse mail for attachments:', error);
+          }
+        });
+      });
+
+      fetch.once('error', (err) => {
+        console.error('[IMAP] Fetch attachments error:', err);
+        reject(err);
+      });
+
+      fetch.once('end', () => {
+        console.log(`[IMAP] Fetched ${attachments.length} attachments for UID: ${uid}`);
+        resolve(attachments);
       });
     });
   }

@@ -23,6 +23,7 @@ export const useAppStore = defineStore('app', () => {
     fetchMailLimit: 50,  // 每次拉取邮件数量
     autoSync: true,
     syncInterval: 15,
+    syncDeleteToServer: true,  // 删除邮件时是否同步到服务器
   })
 
   /**
