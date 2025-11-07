@@ -1,6 +1,6 @@
 {
   "name": "maillionaire",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "专业的跨平台邮件收发客户端",
   "main": "electron/main.js",
   "author": "Maillionaire Team",
@@ -14,7 +14,12 @@
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win",
     "electron:build:mac": "npm run build && electron-builder --mac",
-    "electron:build:linux": "npm run build && electron-builder --linux"
+    "electron:build:linux": "npm run build && electron-builder --linux",
+    "package": "npm run build && npm run electron:build",
+    "package:win": "npm run build && npm run electron:build:win",
+    "package:mac": "npm run build && npm run electron:build:mac",
+    "package:linux": "npm run build && npm run electron:build:linux",
+    "package:all": "npm run build && electron-builder --win --mac --linux"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",

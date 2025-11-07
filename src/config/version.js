@@ -4,8 +4,8 @@
  */
 
 export const APP_VERSION = {
-  version: '1.1.0',
-  buildDate: '2025-10-19',
+  version: '1.2.0',
+  buildDate: '2025-11-07',
   name: 'Maillionaire',
   description: '专业的跨平台邮件收发客户端',
   copyright: '© 2025 Maillionaire Team',
