@@ -1,0 +1,103 @@
+{
+  "name": "maillionaire",
+  "version": "1.2.0",
+  "description": "专业的跨平台邮件收发客户端",
+  "main": "electron/main.js",
+  "author": "Maillionaire Team",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:start": "electron .",
+    "electron:dev": "concurrently -k \"npm run dev\" \"node scripts/start-electron.js\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run build && electron-builder --linux",
+    "package": "npm run build && npm run electron:build",
+    "package:win": "npm run build && npm run electron:build:win",
+    "package:mac": "npm run build && npm run electron:build:mac",
+    "package:linux": "npm run build && npm run electron:build:linux",
+    "package:all": "npm run build && electron-builder --win --mac --linux"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "@vueup/vue-quill": "^1.2.0",
+    "ant-design-vue": "^4.0.3",
+    "archiver": "^7.0.1",
+    "axios": "^1.5.0",
+    "crypto-js": "^4.1.1",
+    "csv-writer": "^1.6.0",
+    "dayjs": "^1.11.10",
+    "dompurify": "^3.3.0",
+    "https-proxy-agent": "^7.0.6",
+    "imap": "^0.8.19",
+    "mailparser": "^3.6.5",
+    "nodemailer": "^6.9.5",
+    "pinia": "^2.1.6",
+    "socks": "^2.8.7",
+    "socks-proxy-agent": "^8.0.5",
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "concurrently": "^8.2.1",
+    "electron": "^26.6.10",
+    "electron-builder": "^24.6.4",
+    "sass": "^1.66.1",
+    "vite": "^4.4.9",
+    "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "com.maillionaire.app",
+    "productName": "Maillionaire",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!electron/node_modules",
+      "!**/*.{ts,tsx}",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName} Setup ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Office"
+    }
+  }
+}
