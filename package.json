@@ -1,6 +1,6 @@
 {
   "name": "maillionaire",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "专业的跨平台邮件收发客户端",
   "main": "electron/main.js",
   "author": "Maillionaire Team",
@@ -69,7 +69,9 @@
       {
         "from": "dist",
         "to": "dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
