@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, session, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const smtpService = require('./services/smtp-main');
@@ -13,6 +13,9 @@ let proxyConfig = null;
  * 创建主窗口
  */
 function createWindow() {
+  // 隐藏窗口菜单栏
+  Menu.setApplicationMenu(null);
+
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -30,7 +33,7 @@ function createWindow() {
   // 开发环境加载vite服务器，生产环境加载打包后的文件
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+    // 开发环境可以通过快捷键 Ctrl+Shift+I 打开开发者工具
   } else {
     // 使用 protocol 加载本地文件，确保路径正确
     const indexPath = path.join(__dirname, '../dist/index.html');
