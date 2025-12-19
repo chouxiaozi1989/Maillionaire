@@ -14,7 +14,7 @@ class OAuth2Service {
     tokenUrl: 'https://oauth2.googleapis.com/token',
     // 添加 Gmail API scope
     scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels',
-    redirectUri: import.meta.env.VITE_OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
+    redirectUri: import.meta.env.VITE_OAUTH_REDIRECT_URI || 'http://localhost:5173/oauth/callback',
   }
 
   /**
@@ -26,7 +26,7 @@ class OAuth2Service {
     authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     scope: 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
-    redirectUri: import.meta.env.VITE_OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback',
+    redirectUri: import.meta.env.VITE_OAUTH_REDIRECT_URI || 'http://localhost:5173/oauth/callback',
   }
 
   /**
@@ -87,15 +87,35 @@ class OAuth2Service {
    * 使用授权码交换访问令牌
    * @param {string} provider - 提供商
    * @param {string} code - 授权码
+   * @param {Object} proxySettings - 代理设置（可选）
    * @returns {Promise<Object>} 令牌信息
    */
-  async exchangeToken(provider, code) {
+  async exchangeToken(provider, code, proxySettings = null) {
     const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
 
     // 在 Electron 环境中使用 IPC 调用（支持代理）
     if (window.electronAPI && window.electronAPI.oauth2ExchangeToken) {
       try {
         console.log('[OAuth2] Exchanging token via Electron IPC (with proxy support)')
+        
+        // 如果提供了代理设置，先应用代理
+        if (proxySettings && proxySettings.enabled) {
+          console.log('[OAuth2] Applying proxy settings:', proxySettings.host + ':' + proxySettings.port)
+          // 确保代理设置是可序列化的纯对象
+          const serializableProxy = {
+            enabled: proxySettings.enabled,
+            protocol: proxySettings.protocol,
+            host: proxySettings.host,
+            port: proxySettings.port,
+            auth: {
+              enabled: proxySettings.auth?.enabled || false,
+              username: proxySettings.auth?.username || '',
+              password: proxySettings.auth?.password || ''
+            }
+          }
+          await window.electronAPI.setProxyConfig(serializableProxy)
+        }
+        
         return await window.electronAPI.oauth2ExchangeToken(provider, code, config)
       } catch (error) {
         console.error('[OAuth2] Electron token exchange failed:', error)
@@ -143,15 +163,35 @@ class OAuth2Service {
    * 刷新访问令牌
    * @param {string} provider - 提供商
    * @param {string} refreshToken - 刷新令牌
+   * @param {Object} proxySettings - 代理设置（可选）
    * @returns {Promise<Object>} 新的令牌信息
    */
-  async refreshToken(provider, refreshToken) {
+  async refreshToken(provider, refreshToken, proxySettings = null) {
     const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
 
     // 在 Electron 环境中使用 IPC 调用（支持代理）
     if (window.electronAPI && window.electronAPI.oauth2RefreshToken) {
       try {
         console.log('[OAuth2] Refreshing token via Electron IPC (with proxy support)')
+        
+        // 如果提供了代理设置，先应用代理
+        if (proxySettings && proxySettings.enabled) {
+          console.log('[OAuth2] Applying proxy settings:', proxySettings.host + ':' + proxySettings.port)
+          // 确保代理设置是可序列化的纯对象
+          const serializableProxy = {
+            enabled: proxySettings.enabled,
+            protocol: proxySettings.protocol,
+            host: proxySettings.host,
+            port: proxySettings.port,
+            auth: {
+              enabled: proxySettings.auth?.enabled || false,
+              username: proxySettings.auth?.username || '',
+              password: proxySettings.auth?.password || ''
+            }
+          }
+          await window.electronAPI.setProxyConfig(serializableProxy)
+        }
+        
         return await window.electronAPI.oauth2RefreshToken(provider, refreshToken, config)
       } catch (error) {
         console.error('[OAuth2] Electron token refresh failed:', error)
@@ -211,10 +251,12 @@ class OAuth2Service {
         const left = (window.screen.width - width) / 2
         const top = (window.screen.height - height) / 2
 
+        console.log('[OAuth2] Opening auth window:', authUrl)
+
         const authWindow = window.open(
           authUrl,
           'OAuth2 Authorization',
-          `width=${width},height=${height},left=${left},top=${top}`
+          `width=${width},height=${height},left=${left},top=${top},popup=yes,noopener=no`
         )
 
         if (!authWindow) {
@@ -226,12 +268,17 @@ class OAuth2Service {
         const messageHandler = (event) => {
           // 验证消息来源（安全检查）
           if (event.origin !== window.location.origin) {
-            console.warn('Received message from unknown origin:', event.origin)
+            console.warn('[OAuth2] Received message from unknown origin:', event.origin)
             return
           }
 
           // 检查是否是 OAuth2 回调消息
           if (event.data && event.data.type === 'oauth2-callback') {
+            console.log('[OAuth2] Received callback message:', { 
+              hasCode: !!event.data.code,
+              hasError: !!event.data.error 
+            })
+
             // 移除事件监听
             window.removeEventListener('message', messageHandler)
             clearInterval(checkInterval)
@@ -246,6 +293,7 @@ class OAuth2Service {
               }
             } catch (e) {
               // 忽略关闭窗口错误
+              console.warn('[OAuth2] Failed to close auth window:', e)
             }
 
             // 处理错误
@@ -262,6 +310,7 @@ class OAuth2Service {
 
             // 验证 state
             if (this.validateState(returnedState, email)) {
+              console.log('[OAuth2] Authorization successful, code received')
               resolve(code)
             } else {
               reject(new Error('State 验证失败，可能存在安全风险'))
@@ -277,6 +326,7 @@ class OAuth2Service {
           try {
             // 尝试检查窗口状态（可能因 COOP 失败）
             if (authWindow.closed) {
+              console.log('[OAuth2] Auth window was closed by user')
               window.removeEventListener('message', messageHandler)
               clearInterval(checkInterval)
               clearTimeout(timeoutId)
@@ -289,6 +339,7 @@ class OAuth2Service {
 
         // 超时处理（5分钟）
         const timeoutId = setTimeout(() => {
+          console.log('[OAuth2] Auth timeout after 5 minutes')
           window.removeEventListener('message', messageHandler)
           clearInterval(checkInterval)
           try {
@@ -316,9 +367,10 @@ class OAuth2Service {
    * 完整的 OAuth2 认证流程
    * @param {string} provider - 提供商 ('gmail' 或 'outlook')
    * @param {string} email - 邮箱地址
+   * @param {Object} proxySettings - 代理设置（可选）
    * @returns {Promise<Object>} 认证结果
    */
-  async authenticate(provider, email) {
+  async authenticate(provider, email, proxySettings = null) {
     try {
       // 检查是否配置了 OAuth2 凭证
       const config = provider === 'gmail' ? this.gmailConfig : this.outlookConfig
@@ -340,12 +392,30 @@ class OAuth2Service {
 
       // 生产环境：执行真实的 OAuth2 认证流程
       console.log(`OAuth2 Production Mode: Starting ${provider} authentication for ${email}`)
+      
+      // 如果提供了代理设置，先应用代理（用于打开授权窗口）
+      if (proxySettings && proxySettings.enabled && window.electronAPI && window.electronAPI.setProxyConfig) {
+        console.log('[OAuth2] Applying proxy settings for authorization:', proxySettings.host + ':' + proxySettings.port)
+        // 确保代理设置是可序列化的纯对象
+        const serializableProxy = {
+          enabled: proxySettings.enabled,
+          protocol: proxySettings.protocol,
+          host: proxySettings.host,
+          port: proxySettings.port,
+          auth: {
+            enabled: proxySettings.auth?.enabled || false,
+            username: proxySettings.auth?.username || '',
+            password: proxySettings.auth?.password || ''
+          }
+        }
+        await window.electronAPI.setProxyConfig(serializableProxy)
+      }
 
       // 1. 打开授权窗口获取授权码
       const code = await this.openAuthWindow(provider, email)
 
-      // 2. 使用授权码交换访问令牌
-      const tokens = await this.exchangeToken(provider, code)
+      // 2. 使用授权码交换访问令牌（传递代理设置）
+      const tokens = await this.exchangeToken(provider, code, proxySettings)
 
       return {
         success: true,

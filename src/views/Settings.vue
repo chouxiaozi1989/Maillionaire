@@ -105,20 +105,15 @@
         <!-- 代理设置 -->
         <div v-if="selectedMenu[0] === 'proxy'" class="settings-panel">
           <h2 class="panel-title">代理设置</h2>
+          <p style="margin-bottom: 24px; color: #8C8C8C;">
+            配置全局代理服务器地址。是否使用代理请在账户管理中针对每个账户单独设置。
+          </p>
 
           <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
-            <a-form-item label="启用代理">
-              <a-switch v-model:checked="proxySettings.enabled" />
-              <span style="margin-left: 8px; color: #8C8C8C;">
-                启用后所有网络连接将通过代理服务器
-              </span>
-            </a-form-item>
-
             <a-form-item label="代理协议">
               <a-select 
                 v-model:value="proxySettings.protocol" 
                 style="width: 200px"
-                :disabled="!proxySettings.enabled"
               >
                 <a-select-option value="http">HTTP</a-select-option>
                 <a-select-option value="https">HTTPS</a-select-option>
@@ -130,7 +125,6 @@
                 v-model:value="proxySettings.host" 
                 placeholder="127.0.0.1"
                 style="width: 300px"
-                :disabled="!proxySettings.enabled"
               />
             </a-form-item>
 
@@ -141,14 +135,12 @@
                 :max="65535"
                 placeholder="7890"
                 style="width: 200px"
-                :disabled="!proxySettings.enabled"
               />
             </a-form-item>
 
             <a-form-item label="认证">
               <a-switch 
                 v-model:checked="proxySettings.auth.enabled" 
-                :disabled="!proxySettings.enabled"
               />
               <span style="margin-left: 8px; color: #8C8C8C;">
                 如果代理服务器需要身份验证，请启用
@@ -163,7 +155,6 @@
                 v-model:value="proxySettings.auth.username" 
                 placeholder="输入用户名"
                 style="width: 300px"
-                :disabled="!proxySettings.enabled"
               />
             </a-form-item>
 
@@ -175,7 +166,6 @@
                 v-model:value="proxySettings.auth.password" 
                 placeholder="输入密码"
                 style="width: 300px"
-                :disabled="!proxySettings.enabled"
               />
             </a-form-item>
 
@@ -214,7 +204,6 @@
             </a-form-item>
 
             <a-alert
-              v-if="proxySettings.enabled"
               message="代理配置信息"
               type="info"
               show-icon
@@ -223,7 +212,7 @@
               <template #description>
                 <p><strong>当前代理：</strong> {{ getProxyUrl() }}</p>
                 <p style="margin-top: 8px; color: #8C8C8C;">
-                  注意：修改代理设置后需要重启应用才能全面生效
+                  注意：在账户管理中启用代理后，该账户的网络连接将通过此代理服务器
                 </p>
               </template>
             </a-alert>
@@ -241,34 +230,101 @@
             添加账户
           </a-button>
 
-          <a-list :data-source="accounts" item-layout="horizontal">
-            <template #renderItem="{ item }">
-              <a-list-item>
-                <template #actions>
-                  <a-button type="link" @click="handleEditAccount(item)">编辑</a-button>
+          <a-table
+            :columns="accountColumns"
+            :data-source="accounts"
+            :pagination="{ pageSize: 10 }"
+            row-key="id"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'email'">
+                <a-space>
+                  <a-avatar :style="{ backgroundColor: getAvatarColor(record.email) }">
+                    {{ record.email.charAt(0).toUpperCase() }}
+                  </a-avatar>
+                  <div>
+                    <div><strong>{{ record.email }}</strong></div>
+                    <div style="font-size: 12px; color: #8C8C8C;">
+                      {{ record.name || record.email.split('@')[0] }}
+                    </div>
+                  </div>
+                </a-space>
+              </template>
+              <template v-else-if="column.key === 'type'">
+                <a-tag :color="getTypeColor(record.type)">
+                  {{ getTypeName(record.type) }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'status'">
+                <a-space>
+                  <a-badge :status="record.connected ? 'success' : 'default'" />
+                  <span>{{ record.connected ? '已连接' : '未连接' }}</span>
+                  <a-tag v-if="record.oauth2" color="blue">OAuth2</a-tag>
+                  <a-tag v-if="record.testMode" color="orange">测试模式</a-tag>
+                </a-space>
+              </template>
+              <template v-else-if="column.key === 'proxy'">
+                <template v-if="record.proxySettings && record.proxySettings.enabled">
+                  <a-space direction="vertical" size="small">
+                    <span>
+                      <CheckCircleOutlined style="color: #52c41a; margin-right: 4px;" />
+                      已启用
+                    </span>
+                    <div style="font-size: 12px; color: #8C8C8C;">
+                      {{ record.proxySettings.protocol }}://{{ record.proxySettings.host }}:{{ record.proxySettings.port }}
+                    </div>
+                  </a-space>
+                </template>
+                <template v-else>
+                  <span style="color: #8C8C8C;">
+                    <CloseCircleOutlined style="margin-right: 4px;" />
+                    未启用
+                  </span>
+                </template>
+              </template>
+              <template v-else-if="column.key === 'createdAt'">
+                {{ formatDate(record.createdAt) }}
+              </template>
+              <template v-else-if="column.key === 'actions'">
+                <a-space>
+                  <a-button
+                    type="link"
+                    size="small"
+                    @click="handleSwitchAccount(record)"
+                    :disabled="currentAccountId === record.id"
+                  >
+                    <template v-if="currentAccountId === record.id">
+                      <CheckOutlined /> 当前账户
+                    </template>
+                    <template v-else>
+                      切换
+                    </template>
+                  </a-button>
+                  <a-button type="link" size="small" @click="handleEditAccount(record)">
+                    编辑
+                  </a-button>
+                  <a-button 
+                    type="link" 
+                    size="small" 
+                    @click="handleTestAccountConnection(record)"
+                    :loading="testingAccountId === record.id"
+                  >
+                    测试连接
+                  </a-button>
                   <a-popconfirm
                     title="确定要删除这个账户吗？"
-                    @confirm="handleDeleteAccount(item.id)"
+                    ok-text="确定"
+                    cancel-text="取消"
+                    @confirm="handleDeleteAccount(record.id)"
                   >
-                    <a-button type="link" danger>删除</a-button>
+                    <a-button type="link" size="small" danger>
+                      删除
+                    </a-button>
                   </a-popconfirm>
-                </template>
-                <a-list-item-meta>
-                  <template #avatar>
-                    <a-avatar :style="{ backgroundColor: '#1890FF' }">
-                      {{ item.email.charAt(0).toUpperCase() }}
-                    </a-avatar>
-                  </template>
-                  <template #title>
-                    {{ item.email }}
-                  </template>
-                  <template #description>
-                    {{ item.type }} • {{ item.connected ? '已连接' : '未连接' }}
-                  </template>
-                </a-list-item-meta>
-              </a-list-item>
+                </a-space>
+              </template>
             </template>
-          </a-list>
+          </a-table>
         </div>
 
         <!-- 邮件模板 -->
@@ -433,7 +489,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -445,6 +501,9 @@ import {
   PlusOutlined,
   MailOutlined,
   GlobalOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  CheckOutlined,
 } from '@ant-design/icons-vue'
 import DOMPurify from 'dompurify'
 import dayjs from 'dayjs'
@@ -477,6 +536,17 @@ const settings = ref({
 // 账户相关
 const accountFormVisible = ref(false)
 const currentAccount = ref(null)
+const testingAccountId = ref(null)
+const currentAccountId = computed(() => accountStore.currentAccountId)
+
+const accountColumns = [
+  { title: '邮箱账户', key: 'email', dataIndex: 'email', width: 280 },
+  { title: '类型', key: 'type', dataIndex: 'type', width: 100 },
+  { title: '连接状态', key: 'status', dataIndex: 'connected', width: 180 },
+  { title: '代理设置', key: 'proxy', width: 150 },
+  { title: '创建时间', key: 'createdAt', dataIndex: 'createdAt', width: 180 },
+  { title: '操作', key: 'actions', width: 280 },
+]
 
 // 代理设置
 const proxySettings = ref(proxyConfig.getConfig())
@@ -513,7 +583,22 @@ onMounted(async () => {
     templateStore.loadTemplates(),
     signatureStore.loadSignatures(),
   ])
+  
+  // 监听从 Main.vue 发来的菜单选择事件
+  window.addEventListener('settings-select-menu', handleMenuSelectEvent)
 })
+
+// 组件卸载时移除事件监听
+onUnmounted(() => {
+  window.removeEventListener('settings-select-menu', handleMenuSelectEvent)
+})
+
+// 处理菜单选择事件
+function handleMenuSelectEvent(event) {
+  if (event.detail && event.detail.menu) {
+    selectedMenu.value = [event.detail.menu]
+  }
+}
 
 function handleSaveSettings() {
   // Save settings to app store
@@ -542,17 +627,12 @@ async function handleSaveProxySettings() {
 }
 
 async function handleTestProxy() {
-  if (!proxySettings.value.enabled) {
-    message.warning('请先启用代理')
-    return
-  }
-  
   // 验证测试 URL
   if (!testUrl.value || !testUrl.value.trim()) {
     message.warning('请输入测试 URL')
     return
   }
-  
+
   // 简单的 URL 格式验证
   try {
     new URL(testUrl.value)
@@ -560,10 +640,12 @@ async function handleTestProxy() {
     message.warning('请输入有效的 URL（如 https://www.google.com）')
     return
   }
-  
+
   testingProxy.value = true
   try {
-    const result = await proxyConfig.testConnection(testUrl.value)
+    // 使用表单中的配置进行测试（而非已保存的配置）
+    const configToTest = JSON.parse(JSON.stringify(proxySettings.value))
+    const result = await proxyConfig.testConnection(testUrl.value, configToTest)
     if (result.success) {
       message.success(`代理连接测试成功 (${result.status || 200})`)
     } else {
@@ -606,6 +688,54 @@ function handleEditAccount(account) {
   accountFormVisible.value = true
 }
 
+function handleSwitchAccount(account) {
+  accountStore.switchAccount(account.id)
+  message.success(`已切换到账户：${account.email}`)
+}
+
+async function handleTestAccountConnection(account) {
+  try {
+    testingAccountId.value = account.id
+    
+    // 应用账户的代理设置
+    if (account.proxySettings && account.proxySettings.enabled) {
+      if (window.electronAPI && window.electronAPI.setProxyConfig) {
+        // 创建可序列化的纯对象，避免 Vue 响应式对象导致的克隆错误
+        const serializableProxy = {
+          enabled: account.proxySettings.enabled,
+          protocol: account.proxySettings.protocol,
+          host: account.proxySettings.host,
+          port: account.proxySettings.port,
+          auth: {
+            enabled: account.proxySettings.auth?.enabled || false,
+            username: account.proxySettings.auth?.username || '',
+            password: account.proxySettings.auth?.password || ''
+          }
+        }
+        await window.electronAPI.setProxyConfig(serializableProxy)
+      }
+    }
+    
+    const result = await accountStore.verifyAccount(account)
+    
+    if (result.oauth2) {
+      message.success('OAuth2 账户验证成功')
+    } else if (result.imap && result.smtp) {
+      message.success('IMAP 和 SMTP 连接测试成功')
+      // 更新连接状态
+      await accountStore.updateAccount(account.id, { connected: true })
+    } else {
+      const errors = result.errors || []
+      message.error(`连接测试失败：${errors.join('; ')}`)
+    }
+  } catch (error) {
+    console.error('[Settings] Test connection failed:', error)
+    message.error(`测试失败：${error.message}`)
+  } finally {
+    testingAccountId.value = null
+  }
+}
+
 async function handleAccountSubmit(account) {
   // 账户添加/编辑成功后，如果是新账户，切换到新账户
   if (account && !currentAccount.value) {
@@ -640,6 +770,34 @@ async function handleDeleteAccount(accountId) {
     console.error('[Settings] Delete account failed:', error)
     message.error(`删除失败：${error.message}`)
   }
+}
+
+function getAvatarColor(email) {
+  const colors = ['#1890FF', '#FA8C16', '#52C41A', '#13C2C2', '#722ED1', '#EB2F96']
+  const index = email.charCodeAt(0) % colors.length
+  return colors[index]
+}
+
+function getTypeColor(type) {
+  const colors = {
+    gmail: 'red',
+    outlook: 'blue',
+    qq: 'cyan',
+    163: 'green',
+    126: 'orange',
+  }
+  return colors[type] || 'default'
+}
+
+function getTypeName(type) {
+  const names = {
+    gmail: 'Gmail',
+    outlook: 'Outlook',
+    qq: 'QQ邮箱',
+    163: '163邮箱',
+    126: '126邮箱',
+  }
+  return names[type] || type
 }
 
 // 模板管理方法

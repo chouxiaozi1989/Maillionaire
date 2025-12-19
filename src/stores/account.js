@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { storageService } from '@/services/storage'
 import { imapService } from '@/services/imap'
 import { smtpService } from '@/services/smtp'
+import proxyConfig from '@/config/proxy'
 
 /**
  * 账户管理状态
@@ -50,7 +51,7 @@ export const useAccountStore = defineStore('account', () => {
         smtp: false,
         errors: [],
       }
-      
+
       // 如果是 OAuth2 账户，跳过验证
       // OAuth2 的 IMAP/SMTP 认证需要在 Electron 主进程中实现 XOAUTH2 机制
       if (account.oauth2) {
@@ -63,7 +64,31 @@ export const useAccountStore = defineStore('account', () => {
           message: 'OAuth2 认证已验证账户有效性',
         }
       }
-      
+
+      // 获取账户的有效代理配置
+      const effectiveProxy = proxyConfig.getEffectiveProxyConfig(account)
+
+      if (effectiveProxy) {
+        console.log('[Account] Using proxy:', effectiveProxy.protocol + '://' + effectiveProxy.host + ':' + effectiveProxy.port)
+        if (account.proxySettings?.useIndependent) {
+          console.log('[Account] Using independent proxy settings')
+        } else {
+          console.log('[Account] Using global proxy settings')
+        }
+        if (window.electronAPI && window.electronAPI.setProxyConfig) {
+          await window.electronAPI.setProxyConfig(effectiveProxy)
+        }
+      } else {
+        console.log('[Account] No proxy will be used (direct connection)')
+        if (account.proxySettings?.useIndependent) {
+          console.log('[Account] Independent proxy settings disabled proxy')
+        }
+        // 清除代理设置，使用直接连接
+        if (window.electronAPI && window.electronAPI.setProxyConfig) {
+          await window.electronAPI.setProxyConfig({ enabled: false })
+        }
+      }
+
       // 验证 IMAP 连接（仅用于 IMAP/SMTP 账户）
       try {
         await imapService.connect({
@@ -74,14 +99,14 @@ export const useAccountStore = defineStore('account', () => {
         })
         results.imap = true
         console.log('[Account] IMAP connection verified')
-        
+
         // 连接成功后断开
         await imapService.disconnect()
       } catch (error) {
         console.error('[Account] IMAP verification failed:', error)
         results.errors.push(`IMAP: ${error.message}`)
       }
-      
+
       // 验证 SMTP 连接（仅用于 IMAP/SMTP 账户）
       try {
         await smtpService.verify({
@@ -96,7 +121,7 @@ export const useAccountStore = defineStore('account', () => {
         console.error('[Account] SMTP verification failed:', error)
         results.errors.push(`SMTP: ${error.message}`)
       }
-      
+
       return results
     } catch (error) {
       console.error('[Account] Verification failed:', error)

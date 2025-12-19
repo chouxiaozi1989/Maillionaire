@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 代理配置操作
   setProxyConfig: (config) => ipcRenderer.invoke('set-proxy-config', config),
   getProxyConfig: () => ipcRenderer.invoke('get-proxy-config'),
-  testProxy: (config) => ipcRenderer.invoke('test-proxy', config),
+  testProxy: (config, testUrl) => ipcRenderer.invoke('test-proxy', config, testUrl),
   
   // OAuth2 操作
   oauth2ExchangeToken: (provider, code, config) => ipcRenderer.invoke('oauth2-exchange-token', { provider, code, config }),

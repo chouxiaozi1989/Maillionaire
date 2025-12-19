@@ -15,6 +15,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // 确保 OAuth2 回调可以正常工作
+    cors: true,
   },
   build: {
     outDir: 'dist',

@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
 import { useAccountStore } from '@/stores/account'
 
 /**
@@ -81,7 +81,12 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHashHistory(import.meta.env.BASE_URL),
+  // 根据环境选择路由模式
+  // 开发环境使用 history 模式（OAuth2 友好）
+  // 生产环境（Electron）使用 hash 模式
+  history: import.meta.env.DEV 
+    ? createWebHistory(import.meta.env.BASE_URL)
+    : createWebHashHistory(import.meta.env.BASE_URL),
   routes,
 })
 

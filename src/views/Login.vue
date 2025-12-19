@@ -129,41 +129,146 @@
             </div>
           </template>
         </a-alert>
+
+        <a-divider />
+
+        <!-- 代理设置 -->
+        <h4 style="margin-bottom: 16px;">代理设置</h4>
+
+        <a-form-item label="使用独立代理设置">
+          <a-switch v-model:checked="formData.proxySettings.useIndependent" />
+          <span style="margin-left: 8px; color: #8C8C8C;">
+            开启后将忽略全局代理设置，使用此账户独立的代理配置
+          </span>
+        </a-form-item>
+
+        <template v-if="formData.proxySettings.useIndependent">
+          <a-alert
+            message="独立代理说明"
+            type="info"
+            show-icon
+            style="margin-bottom: 16px"
+          >
+            <template #description>
+              <p style="margin: 0;">此账户将完全忽略全局代理设置，按照下方配置进行连接。</p>
+              <p style="margin: 4px 0 0 0;">如果关闭"启用代理"，则此账户将不使用任何代理直接连接。</p>
+            </template>
+          </a-alert>
+
+          <a-form-item label="启用代理">
+            <a-switch v-model:checked="formData.proxySettings.enabled" />
+            <span style="margin-left: 8px; color: #8C8C8C;">
+              {{ formData.proxySettings.enabled ? '此账户将通过代理连接' : '此账户将直接连接（不使用代理）' }}
+            </span>
+          </a-form-item>
+
+          <template v-if="formData.proxySettings.enabled">
+            <a-form-item label="代理协议">
+              <a-select v-model:value="formData.proxySettings.protocol" style="width: 200px">
+                <a-select-option value="http">HTTP</a-select-option>
+                <a-select-option value="https">HTTPS</a-select-option>
+                <a-select-option value="socks5">SOCKS5</a-select-option>
+              </a-select>
+            </a-form-item>
+
+            <a-form-item label="服务器地址">
+              <a-input
+                v-model:value="formData.proxySettings.host"
+                placeholder="127.0.0.1"
+                style="width: 300px"
+              />
+            </a-form-item>
+
+            <a-form-item label="端口">
+              <a-input-number
+                v-model:value="formData.proxySettings.port"
+                :min="1"
+                :max="65535"
+                placeholder="7890"
+                style="width: 200px"
+              />
+            </a-form-item>
+
+            <a-form-item label="需要认证">
+              <a-switch v-model:checked="formData.proxySettings.auth.enabled" />
+            </a-form-item>
+
+            <template v-if="formData.proxySettings.auth.enabled">
+              <a-form-item label="用户名">
+                <a-input
+                  v-model:value="formData.proxySettings.auth.username"
+                  placeholder="输入用户名"
+                  style="width: 300px"
+                />
+              </a-form-item>
+
+              <a-form-item label="密码">
+                <a-input-password
+                  v-model:value="formData.proxySettings.auth.password"
+                  placeholder="输入密码"
+                  style="width: 300px"
+                />
+              </a-form-item>
+            </template>
+          </template>
+        </template>
+
+        <a-alert
+          v-if="!formData.proxySettings.useIndependent"
+          message="当前使用全局代理设置"
+          type="info"
+          show-icon
+          style="margin-top: 8px"
+        >
+          <template #description>
+            此账户将使用系统设置中的全局代理配置。如需为此账户单独配置代理，请开启"使用独立代理设置"。
+          </template>
+        </a-alert>
       </a-form>
     </a-modal>
 
-    <!-- 代理设置弹窗 -->
+    <!-- 全局代理设置弹窗 -->
     <a-modal
       v-model:open="showProxySettings"
-      title="网络代理设置"
+      title="全局代理设置"
       :width="600"
       :footer="null"
     >
+      <a-alert
+        message="全局代理说明"
+        type="info"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #description>
+          <p style="margin: 0;">全局代理设置将应用于所有未配置独立代理的账户。</p>
+          <p style="margin: 4px 0 0 0;">如果账户启用了"使用独立代理设置"，则该账户将忽略此全局设置。</p>
+        </template>
+      </a-alert>
+
       <a-form layout="horizontal" :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
-        <a-form-item label="启用代理">
+        <a-form-item label="启用全局代理">
           <a-switch v-model:checked="proxySettings.enabled" />
           <span style="margin-left: 8px; color: #8C8C8C;">
-            启用后所有网络请求将通过代理服务器
+            未配置独立代理的账户将使用此设置
           </span>
         </a-form-item>
 
         <a-form-item label="代理协议">
-          <a-select 
-            v-model:value="proxySettings.protocol" 
+          <a-select
+            v-model:value="proxySettings.protocol"
             style="width: 200px"
             :disabled="!proxySettings.enabled"
           >
             <a-select-option value="http">HTTP</a-select-option>
             <a-select-option value="https">HTTPS</a-select-option>
+            <a-select-option value="socks5">SOCKS5</a-select-option>
           </a-select>
-          <div style="margin-top: 4px; color: #8C8C8C; font-size: 12px;">
-            💡 提示：推荐使用 HTTP 协议（HTTPS 可能遇到 TLS 证书问题）
-          </div>
         </a-form-item>
 
         <a-form-item label="服务器地址">
-          <a-input 
-            v-model:value="proxySettings.host" 
+          <a-input
+            v-model:value="proxySettings.host"
             placeholder="127.0.0.1"
             style="width: 300px"
             :disabled="!proxySettings.enabled"
@@ -171,9 +276,9 @@
         </a-form-item>
 
         <a-form-item label="端口">
-          <a-input-number 
-            v-model:value="proxySettings.port" 
-            :min="1" 
+          <a-input-number
+            v-model:value="proxySettings.port"
+            :min="1"
             :max="65535"
             placeholder="7890"
             style="width: 200px"
@@ -181,34 +286,31 @@
           />
         </a-form-item>
 
-        <a-form-item label="认证">
-          <a-switch 
-            v-model:checked="proxySettings.auth.enabled" 
+        <a-form-item label="需要认证">
+          <a-switch
+            v-model:checked="proxySettings.auth.enabled"
             :disabled="!proxySettings.enabled"
           />
-          <span style="margin-left: 8px; color: #8C8C8C;">
-            如果代理服务器需要身份验证，请启用
-          </span>
         </a-form-item>
 
-        <a-form-item 
-          v-if="proxySettings.auth.enabled" 
+        <a-form-item
+          v-if="proxySettings.auth.enabled"
           label="用户名"
         >
-          <a-input 
-            v-model:value="proxySettings.auth.username" 
+          <a-input
+            v-model:value="proxySettings.auth.username"
             placeholder="输入用户名"
             style="width: 300px"
             :disabled="!proxySettings.enabled"
           />
         </a-form-item>
 
-        <a-form-item 
-          v-if="proxySettings.auth.enabled" 
+        <a-form-item
+          v-if="proxySettings.auth.enabled"
           label="密码"
         >
-          <a-input-password 
-            v-model:value="proxySettings.auth.password" 
+          <a-input-password
+            v-model:value="proxySettings.auth.password"
             placeholder="输入密码"
             style="width: 300px"
             :disabled="!proxySettings.enabled"
@@ -218,15 +320,15 @@
         <a-divider style="margin: 24px 0" />
 
         <a-form-item label="测试 URL">
-          <a-input 
-            v-model:value="testUrl" 
+          <a-input
+            v-model:value="testUrl"
             placeholder="https://www.google.com"
             style="width: 400px"
           >
             <template #addonAfter>
-              <a-button 
-                type="link" 
-                size="small" 
+              <a-button
+                type="link"
+                size="small"
                 @click="testUrl = 'https://www.google.com'"
                 style="padding: 0 8px"
               >
@@ -293,6 +395,18 @@ const formData = reactive({
   email: '',
   password: '',
   name: '',
+  proxySettings: {
+    useIndependent: false,
+    enabled: false,
+    protocol: 'http',
+    host: '127.0.0.1',
+    port: 7890,
+    auth: {
+      enabled: false,
+      username: '',
+      password: '',
+    },
+  },
 })
 
 // 代理设置弹窗
@@ -404,6 +518,7 @@ async function handleAddAccount() {
       // 更新账户
       const updates = {
         name: formData.name || formData.email.split('@')[0],
+        proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
       }
       
       // 如果修改了密码，更新密码
@@ -418,14 +533,26 @@ async function handleAddAccount() {
       // 关闭弹窗
       showAddAccount.value = false
       editingAccount.value = null
-      
+
       // 重置表单
       formRef.value.resetFields()
       formData.type = 'gmail'
       formData.email = ''
       formData.password = ''
       formData.name = ''
-      
+      formData.proxySettings = {
+        useIndependent: false,
+        enabled: false,
+        protocol: 'http',
+        host: '127.0.0.1',
+        port: 7890,
+        auth: {
+          enabled: false,
+          username: '',
+          password: '',
+        },
+      }
+
       return
     }
     
@@ -434,7 +561,12 @@ async function handleAddAccount() {
       message.loading('正在进行 OAuth2 认证...', 0)
       
       try {
-        const result = await oauth2Service.authenticate(formData.type, formData.email)
+        // 传递代理设置给 OAuth2 认证流程
+        const result = await oauth2Service.authenticate(
+          formData.type, 
+          formData.email,
+          formData.proxySettings
+        )
         message.destroy()
         
         if (!result.success) {
@@ -452,6 +584,7 @@ async function handleAddAccount() {
           expiresAt: result.expiresAt,
           connected: true,
           oauth2: true,
+          proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
         }
         
         // OAuth2 认证成功，跳过 IMAP/SMTP 验证
@@ -478,6 +611,7 @@ async function handleAddAccount() {
           connected: false,
           oauth2: true,
           testMode: true,
+          proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
         }
         skipVerify = true
       }
@@ -490,6 +624,7 @@ async function handleAddAccount() {
         name: formData.name || formData.email.split('@')[0],
         ...config,
         connected: false,
+        proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
       }
     }
     
@@ -566,14 +701,26 @@ async function handleAddAccount() {
       
       // 关闭弹窗
       showAddAccount.value = false
-      
+
       // 重置表单
       formRef.value.resetFields()
       formData.type = 'gmail'
       formData.email = ''
       formData.password = ''
       formData.name = ''
-      
+      formData.proxySettings = {
+        useIndependent: false,
+        enabled: false,
+        protocol: 'http',
+        host: '127.0.0.1',
+        port: 7890,
+        auth: {
+          enabled: false,
+          username: '',
+          password: '',
+        },
+      }
+
       // 自动登录新添加的账户
       await handleLogin(newAccount)
     } catch (error) {
@@ -596,6 +743,34 @@ function handleEditAccount(account) {
   formData.email = account.email
   formData.name = account.name
   formData.password = ''  // 不显示密码
+  // 加载代理设置
+  if (account.proxySettings) {
+    formData.proxySettings = {
+      useIndependent: account.proxySettings.useIndependent || false,
+      enabled: account.proxySettings.enabled || false,
+      protocol: account.proxySettings.protocol || 'http',
+      host: account.proxySettings.host || '127.0.0.1',
+      port: account.proxySettings.port || 7890,
+      auth: {
+        enabled: account.proxySettings.auth?.enabled || false,
+        username: account.proxySettings.auth?.username || '',
+        password: account.proxySettings.auth?.password || '',
+      },
+    }
+  } else {
+    formData.proxySettings = {
+      useIndependent: false,
+      enabled: false,
+      protocol: 'http',
+      host: '127.0.0.1',
+      port: 7890,
+      auth: {
+        enabled: false,
+        username: '',
+        password: '',
+      },
+    }
+  }
   showAddAccount.value = true
 }
 
@@ -633,22 +808,24 @@ async function handleTestProxy() {
     message.warning('请先启用代理')
     return
   }
-  
+
   if (!testUrl.value || !testUrl.value.trim()) {
     message.warning('请输入测试 URL')
     return
   }
-  
+
   try {
     new URL(testUrl.value)
   } catch (error) {
     message.warning('请输入有效的 URL（如 https://www.google.com）')
     return
   }
-  
+
   testingProxy.value = true
   try {
-    const result = await proxyConfig.testConnection(testUrl.value)
+    // 使用表单中的配置进行测试（而非已保存的配置）
+    const configToTest = JSON.parse(JSON.stringify(proxySettings.value))
+    const result = await proxyConfig.testConnection(testUrl.value, configToTest)
     if (result.success) {
       message.success(`代理连接测试成功 (${result.status || 200})`)
     } else {

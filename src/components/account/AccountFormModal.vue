@@ -52,6 +52,101 @@
           </div>
         </template>
       </a-alert>
+
+      <a-divider />
+
+      <!-- 代理设置 -->
+      <h4 style="margin-bottom: 16px;">代理设置</h4>
+
+      <a-form-item label="使用独立代理设置">
+        <a-switch v-model:checked="formData.proxySettings.useIndependent" />
+        <span style="margin-left: 8px; color: #8C8C8C;">
+          开启后将忽略全局代理设置，使用此账户独立的代理配置
+        </span>
+      </a-form-item>
+
+      <template v-if="formData.proxySettings.useIndependent">
+        <a-alert
+          message="独立代理说明"
+          type="info"
+          show-icon
+          style="margin-bottom: 16px"
+        >
+          <template #description>
+            <p style="margin: 0;">此账户将完全忽略全局代理设置，按照下方配置进行连接。</p>
+            <p style="margin: 4px 0 0 0;">如果关闭"启用代理"，则此账户将不使用任何代理直接连接。</p>
+          </template>
+        </a-alert>
+
+        <a-form-item label="启用代理">
+          <a-switch v-model:checked="formData.proxySettings.enabled" />
+          <span style="margin-left: 8px; color: #8C8C8C;">
+            {{ formData.proxySettings.enabled ? '此账户将通过代理连接' : '此账户将直接连接（不使用代理）' }}
+          </span>
+        </a-form-item>
+
+        <template v-if="formData.proxySettings.enabled">
+          <a-form-item label="代理协议">
+            <a-select v-model:value="formData.proxySettings.protocol" style="width: 200px">
+              <a-select-option value="http">HTTP</a-select-option>
+              <a-select-option value="https">HTTPS</a-select-option>
+              <a-select-option value="socks5">SOCKS5</a-select-option>
+            </a-select>
+          </a-form-item>
+
+          <a-form-item label="服务器地址">
+            <a-input
+              v-model:value="formData.proxySettings.host"
+              placeholder="127.0.0.1"
+              style="width: 300px"
+            />
+          </a-form-item>
+
+          <a-form-item label="端口">
+            <a-input-number
+              v-model:value="formData.proxySettings.port"
+              :min="1"
+              :max="65535"
+              placeholder="7890"
+              style="width: 200px"
+            />
+          </a-form-item>
+
+          <a-form-item label="需要认证">
+            <a-switch v-model:checked="formData.proxySettings.auth.enabled" />
+          </a-form-item>
+
+          <template v-if="formData.proxySettings.auth.enabled">
+            <a-form-item label="用户名">
+              <a-input
+                v-model:value="formData.proxySettings.auth.username"
+                placeholder="输入用户名"
+                style="width: 300px"
+              />
+            </a-form-item>
+
+            <a-form-item label="密码">
+              <a-input-password
+                v-model:value="formData.proxySettings.auth.password"
+                placeholder="输入密码"
+                style="width: 300px"
+              />
+            </a-form-item>
+          </template>
+        </template>
+      </template>
+
+      <a-alert
+        v-if="!formData.proxySettings.useIndependent"
+        message="当前使用全局代理设置"
+        type="info"
+        show-icon
+        style="margin-top: 8px"
+      >
+        <template #description>
+          此账户将使用系统设置中的全局代理配置。如需为此账户单独配置代理，请开启"使用独立代理设置"。
+        </template>
+      </a-alert>
     </a-form>
   </a-modal>
 </template>
@@ -82,6 +177,18 @@ const formData = reactive({
   email: '',
   password: '',
   name: '',
+  proxySettings: {
+    useIndependent: false,  // 是否使用独立代理设置
+    enabled: false,         // 是否启用代理（仅在 useIndependent 为 true 时有效）
+    protocol: 'http',
+    host: '127.0.0.1',
+    port: 7890,
+    auth: {
+      enabled: false,
+      username: '',
+      password: '',
+    },
+  },
 })
 
 // 邮箱配置
@@ -141,6 +248,34 @@ watch(() => props.account, (newVal) => {
     formData.email = newVal.email
     formData.name = newVal.name
     formData.password = ''
+    // 加载代理设置
+    if (newVal.proxySettings) {
+      formData.proxySettings = {
+        useIndependent: newVal.proxySettings.useIndependent || false,
+        enabled: newVal.proxySettings.enabled || false,
+        protocol: newVal.proxySettings.protocol || 'http',
+        host: newVal.proxySettings.host || '127.0.0.1',
+        port: newVal.proxySettings.port || 7890,
+        auth: {
+          enabled: newVal.proxySettings.auth?.enabled || false,
+          username: newVal.proxySettings.auth?.username || '',
+          password: newVal.proxySettings.auth?.password || '',
+        },
+      }
+    } else {
+      formData.proxySettings = {
+        useIndependent: false,
+        enabled: false,
+        protocol: 'http',
+        host: '127.0.0.1',
+        port: 7890,
+        auth: {
+          enabled: false,
+          username: '',
+          password: '',
+        },
+      }
+    }
   }
 }, { immediate: true })
 
@@ -164,6 +299,18 @@ function resetForm() {
   formData.email = ''
   formData.password = ''
   formData.name = ''
+  formData.proxySettings = {
+    useIndependent: false,
+    enabled: false,
+    protocol: 'http',
+    host: '127.0.0.1',
+    port: 7890,
+    auth: {
+      enabled: false,
+      username: '',
+      password: '',
+    },
+  }
   formRef.value?.resetFields()
 }
 
@@ -179,6 +326,7 @@ async function handleSubmit() {
     if (isEditing.value) {
       const updates = {
         name: formData.name || formData.email.split('@')[0],
+        proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
       }
       
       if (!isOAuth2.value && formData.password) {
@@ -198,7 +346,12 @@ async function handleSubmit() {
       message.loading('正在进行 OAuth2 认证...', 0)
       
       try {
-        const result = await oauth2Service.authenticate(formData.type, formData.email)
+        // 传递代理设置给 OAuth2 认证流程
+        const result = await oauth2Service.authenticate(
+          formData.type,
+          formData.email,
+          formData.proxySettings
+        )
         message.destroy()
         
         if (!result.success) {
@@ -216,6 +369,7 @@ async function handleSubmit() {
           expiresAt: result.expiresAt,
           connected: true,
           oauth2: true,
+          proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
         }
         
         skipVerify = true
@@ -238,6 +392,7 @@ async function handleSubmit() {
           connected: false,
           oauth2: true,
           testMode: true,
+          proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
         }
         skipVerify = true
       }
@@ -250,6 +405,7 @@ async function handleSubmit() {
         name: formData.name || formData.email.split('@')[0],
         ...config,
         connected: false,
+        proxySettings: JSON.parse(JSON.stringify(formData.proxySettings)),
       }
     }
     
